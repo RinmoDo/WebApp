@@ -1,0 +1,9 @@
+:root{ --primary:#0056b3; }
+body{ background:#f6f7fb; }
+.navbar-brand img{ height:36px; }
+.btn-primary{ background:var(--primary); border-color:var(--primary); }
+.card{ background:#fff; }
+.badge-role{ font-size:.7rem; }
+.table td.small{ max-width:360px; }
+.kpis .card .display-6{ font-weight:700; }
+.modal-xl{ --bs-modal-width: 1100px; }
