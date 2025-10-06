@@ -1,7 +1,8 @@
 /* Achat & Suivi — Front only (localStorage persistence) */
 const USERS = [
-  {username:'admin', password:'admin123', role:'admin', display:'Administrateur'},
-  {username:'user',  password:'user123',  role:'user',  display:'Utilisateur'}
+  {username:'admin',  password:'admin123', role:'admin',  display:'Administrateur'},
+  {username:'user',   password:'user123',  role:'user',   display:'Utilisateur'},
+  {username:'viewer', password:'view123',  role:'viewer', display:'Lecteur'}
 ];
 const STORAGE = {
   ot: 'as_ot', oi: 'as_oi', launch: 'as_launch', exec: 'as_exec', pj: 'as_pj'
@@ -21,37 +22,19 @@ function saveSession(user){ localStorage.setItem('as_session', JSON.stringify(us
 function getSession(){ return JSON.parse(localStorage.getItem('as_session')||'null'); }
 function clearSession(){ localStorage.removeItem('as_session'); }
 
-// The login flow is handled by App.Auth (see bottom of file).
-// Avoid attaching a duplicate click handler that references non-existent IDs which would throw.
-const _btnLogout = document.getElementById('btnLogout');
-if(_btnLogout){
-  _btnLogout.addEventListener('click', ()=>{ clearSession(); window.location.href = 'login.html'; });
-}
-
 function initApp(){
-  const s = getSession(); if(!s){ return; }
-  document.getElementById('loginCard').classList.add('d-none');
-  document.getElementById('app').classList.remove('d-none');
-  document.getElementById('btnLogout').classList.remove('d-none');
-  const badge = document.getElementById('roleBadge'); badge.textContent = `${s.display} (${s.role})`; badge.classList.remove('d-none');
+  const s = getSession();
+  if(!s) return;
+  const appSection = document.getElementById('app');
+  if(appSection) appSection.classList.remove('d-none');
   renderAll();
 }
-// If the user opens index.html without a session, force them to the login page.
-try{
-  const loc = window.location.pathname || window.location.href;
-  if(String(loc).toLowerCase().includes('index.html') && !getSession()){
-    window.location.href = 'login.html';
-  }
-}catch(e){}
 
-// If a session exists, initialize the app UI only when the expected app DOM is present (avoid running on login page)
-if(getSession()){
-  if(document.getElementById('app')){
+document.addEventListener('DOMContentLoaded', ()=>{
+  if(document.getElementById('app') && getSession()){
     initApp();
-  } else {
-    console.debug('Session found but app DOM not present; skipping initApp');
   }
-}
+});
 
 // ===== RENDERERS =====
 function renderAll(){ renderDashboard(); renderOT(); renderOI(); renderLaunch(); renderExec(); }
@@ -349,7 +332,12 @@ const UI = {
   },
 
   removePJ(idx){
-    const key = `${state.currentItemKey}:{id}`;
+    const key = `${state.currentItemKey}:${state.currentItemId}`;
+    const store = JSON.parse(localStorage.getItem(STORAGE.pj)||'{}');
+    if(!Array.isArray(store[key])) return;
+    store[key].splice(idx,1);
+    localStorage.setItem(STORAGE.pj, JSON.stringify(store));
+    UI.renderPJ();
   },
 
   linkToDossiers(num){
@@ -621,6 +609,25 @@ App.Auth = (function(){
     return "Trop d'essais. Veuillez réessayer dans " + s + "s.";
   }
 
+  function buildUserObject(uname){
+    const meta = (typeof USERS !== 'undefined' && Array.isArray(USERS)) ? USERS.find(u=>u.username===uname) : null;
+    return { username: uname, display: meta?.display || uname, role: meta?.role || 'viewer' };
+  }
+
+  function persistSession(uname){
+    const userObj = buildUserObject(uname);
+    try{
+      if(globalThis.saveSession){
+        globalThis.saveSession(userObj);
+      }else{
+        localStorage.setItem('as_session', JSON.stringify(userObj));
+      }
+    }catch(e){
+      localStorage.setItem('as_session', JSON.stringify(userObj));
+    }
+    return userObj;
+  }
+
   function showAlert(msg){
     const el = document.getElementById("authAlert");
     if(!el) return;
@@ -665,9 +672,16 @@ App.Auth = (function(){
     }
     // Fill user menu if present
     const el = document.getElementById("userMenuName");
-    if(el) el.textContent = sess.username;
+    if(el) el.textContent = sess.display || sess.username;
+    const badge = document.getElementById('roleBadge');
+    if(badge){
+      const label = sess.display || sess.username || 'Utilisateur';
+      badge.textContent = `${label} (${sess.role||'—'})`;
+      badge.classList.remove('d-none');
+    }
     const btnOut = document.getElementById("btnLogout");
     if(btnOut){
+      btnOut.classList.remove('d-none');
       btnOut.addEventListener("click", (ev)=>{
         ev.preventDefault();
         clearSession();
@@ -747,11 +761,7 @@ App.Auth = (function(){
   console.debug('App.Auth: validate result', { ok }); devLog('validate result', { ok });
         if(ok){
           clearLock();
-          // Build user object from global USERS metadata when available
-          const uname = user.value.trim();
-          const meta = (typeof USERS !== 'undefined' && Array.isArray(USERS)) ? USERS.find(u=>u.username===uname) : null;
-          const userObj = { username: uname, display: meta?.display || uname, role: meta?.role || 'viewer' };
-          try{ if(globalThis.saveSession) { globalThis.saveSession(userObj); } else { localStorage.setItem('as_session', JSON.stringify(userObj)); } }catch(e){ localStorage.setItem('as_session', JSON.stringify(userObj)); }
+          persistSession(user.value.trim());
           console.debug('App.Auth: login success, redirecting'); devLog('login success, redirecting');
           window.location.href = "index.html";
         } else {
@@ -777,7 +787,15 @@ App.Auth = (function(){
     }, {once:false});
   }
 
-  return { initLogin, guard, getSession, clearSession };
+  async function login(username, password, options={}){
+    const ok = await validate(username, password);
+    if(!ok) return { ok:false };
+    clearLock();
+    const userObj = persistSession(username);
+    return { ok:true, user:userObj };
+  }
+
+  return { initLogin, guard, getSession, clearSession, login };
 })();
 
 // Run guard on non-login pages

@@ -21,36 +21,12 @@
     <div class="d-flex align-items-center gap-3">
       <span class="small text-muted">Connecté&nbsp;: <strong id="userMenuName">–</strong></span>
       <span id="roleBadge" class="badge bg-secondary badge-role d-none"></span>
-      <button class="btn btn-sm btn-outline-secondary" id="btnLogout">Déconnexion</button>
+      <button class="btn btn-sm btn-outline-secondary d-none" id="btnLogout">Déconnexion</button>
     </div>
   </div>
 </nav>
 
 <main class="container my-4">
-
-  <!-- LOGIN -->
-  <section id="loginCard" class="row justify-content-center">
-    <div class="col-md-5">
-      <div class="card shadow-sm">
-        <div class="card-body">
-          <h5 class="card-title text-center text-primary">Authentification</h5>
-          <div id="loginAlert" class="alert alert-danger d-none">Identifiants invalides.</div>
-          <div class="mb-3">
-            <label class="form-label">Utilisateur</label>
-            <input id="user" class="form-control" autocomplete="username">
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Mot de passe</label>
-            <input id="pass" type="password" class="form-control" autocomplete="current-password">
-          </div>
-          <div class="d-grid">
-            <button class="btn btn-primary" id="btnLogin">Se connecter</button>
-          </div>
-          <div class="text-muted small mt-2">Exemple: admin <code>admin/admin123</code> • user <code>user/user123</code></div>
-        </div>
-      </div>
-    </div>
-  </section>
 
   <!-- APP -->
   <section id="app" class="d-none">
