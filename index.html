@@ -96,6 +96,50 @@
                 </div></div>
               </div>
             </div>
+            <div class="row g-3 mt-1">
+              <div class="col-12 col-md-4">
+                <div class="card shadow-sm h-100"><div class="card-body">
+                  <div class="small text-muted">Nombre d'OT chargés</div>
+                  <div class="fs-4 fw-bold" id="dashOtCount">–</div>
+                </div></div>
+              </div>
+              <div class="col-12 col-md-4">
+                <div class="card shadow-sm h-100"><div class="card-body">
+                  <div class="small text-muted">Nombre de projets OI</div>
+                  <div class="fs-4 fw-bold" id="dashOiCount">–</div>
+                </div></div>
+              </div>
+              <div class="col-12 col-md-4">
+                <div class="card shadow-sm h-100"><div class="card-body">
+                  <div class="small text-muted">Dossiers PPA suivis</div>
+                  <div class="fs-4 fw-bold" id="dashPpaCount">–</div>
+                </div></div>
+              </div>
+            </div>
+            <div class="row g-3 mt-1">
+              <div class="col-12 col-lg-6">
+                <div class="card shadow-sm h-100">
+                  <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Top 5 OT par budget</span>
+                    <small class="text-muted" id="dashOtTotal">–</small>
+                  </div>
+                  <div class="card-body">
+                    <div id="dashOtTop" class="small text-muted">Importez un fichier OT pour afficher les plus importants budgets.</div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-12 col-lg-6">
+                <div class="card shadow-sm h-100">
+                  <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Top 5 OI par budget</span>
+                    <small class="text-muted" id="dashOiTotal">–</small>
+                  </div>
+                  <div class="card-body">
+                    <div id="dashOiTop" class="small text-muted">Importez un fichier OI pour afficher les plus importants budgets.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </section>
       </div>
 
@@ -113,6 +157,7 @@
           <div class="card-body">
             <div class="d-flex align-items-center">
               <button id="pickDir-oi" class="btn btn-primary btn-sm"><i class="bi bi-folder2-open me-1"></i>Choisir/Importer</button>
+              <input id="fileInput-oi" type="file" accept=".xlsx" hidden>
             </div>
           </div>
         </div>
@@ -120,6 +165,26 @@
         <!-- OI budget section Filtre -->
         <div class="container my-4" id="oi-budget">
           <h3 class="mb-3">Budget d’investissement (OI)</h3>
+          <div class="row g-3 mb-3">
+            <div class="col-12 col-sm-6 col-lg-3">
+              <div class="card shadow-sm h-100"><div class="card-body">
+                <div class="small text-muted">OI chargés</div>
+                <div class="fs-5 fw-semibold" id="oiCount">–</div>
+              </div></div>
+            </div>
+            <div class="col-12 col-sm-6 col-lg-3">
+              <div class="card shadow-sm h-100"><div class="card-body">
+                <div class="small text-muted">Budget total</div>
+                <div class="fs-5 fw-semibold" id="oiSum">–</div>
+              </div></div>
+            </div>
+            <div class="col-12 col-sm-6 col-lg-3">
+              <div class="card shadow-sm h-100"><div class="card-body">
+                <div class="small text-muted" id="oiYearLabel">Année en cours</div>
+                <div class="fs-6" id="oiPct">–</div>
+              </div></div>
+            </div>
+          </div>
           <div class="d-flex gap-2 flex-wrap mb-2">
             <select id="oiFilter" class="form-select" style="max-width:220px">
               <option value="">— Toutes les catégories —</option>
@@ -162,6 +227,7 @@
           <div class="card-body">
             <div class="d-flex align-items-center">
               <button id="pickDir-ot" class="btn btn-primary btn-sm"><i class="bi bi-folder2-open me-1"></i>Choisir/Importer</button>
+              <input id="fileInput-ot" type="file" accept=".xlsx" hidden>
             </div>
           </div>
         </div>
@@ -169,6 +235,26 @@
         <!-- OT budget section Filtre -->
         <div class="container my-4" id="ot-budget">
           <h3 class="mb-3">Budget de fonctionnement (OT)</h3>
+          <div class="row g-3 mb-3">
+            <div class="col-12 col-sm-6 col-lg-3">
+              <div class="card shadow-sm h-100"><div class="card-body">
+                <div class="small text-muted">OT chargés</div>
+                <div class="fs-5 fw-semibold" id="otCount">–</div>
+              </div></div>
+            </div>
+            <div class="col-12 col-sm-6 col-lg-3">
+              <div class="card shadow-sm h-100"><div class="card-body">
+                <div class="small text-muted">Budget total</div>
+                <div class="fs-5 fw-semibold" id="otSum">–</div>
+              </div></div>
+            </div>
+            <div class="col-12 col-sm-6 col-lg-3">
+              <div class="card shadow-sm h-100"><div class="card-body">
+                <div class="small text-muted" id="otYearLabel">Année en cours</div>
+                <div class="fs-6" id="otPct">–</div>
+              </div></div>
+            </div>
+          </div>
           <div class="d-flex gap-2 flex-wrap mb-2">
             <select id="otFilter" class="form-select" style="max-width:220px">
               <option value="">— Tous les OT —</option>
