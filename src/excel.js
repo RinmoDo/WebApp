@@ -51,7 +51,17 @@ window.addEventListener('DOMContentLoaded', async ()=>{
     if(!savedFile && !savedDir){
       // try fetching /donnees.xlsx
       const resp = await fetch('Data/donnees.xlsx');
-      if(resp.ok){ const buf = await resp.arrayBuffer(); const f = new File([buf], 'donnees.xlsx'); showLoader(); await loadFromFile(f); hideLoader(); document.getElementById('accessCard')?.classList.add('d-none'); }
+      if(resp.ok){
+        const buf = await resp.arrayBuffer();
+        const f = new File([buf], 'donnees.xlsx');
+        showLoader();
+        try{
+          await loadFromFile(f);
+          document.getElementById('accessCard')?.classList.add('d-none');
+        }finally{
+          hideLoader();
+        }
+      }
     }
     // Try loading default OT/OI files into their local stores if empty
     try{
@@ -62,7 +72,12 @@ window.addEventListener('DOMContentLoaded', async ()=>{
           const respOt = await fetch('Data/donnees_ot.xlsx');
           if(respOt.ok){
             const buf = await respOt.arrayBuffer(); const f = new File([buf],'donnees_ot.xlsx');
-            showLoader(); await App.importExcelFile('ot', f); hideLoader();
+            showLoader();
+            try{
+              await App.importExcelFile('ot', f);
+            }finally{
+              hideLoader();
+            }
             const s=document.getElementById('status-ot'); if(s) s.textContent = 'Chargé depuis donnees_ot.xlsx';
             console.debug('donnees_ot.xlsx imported into OT');
           } else {
@@ -80,7 +95,12 @@ window.addEventListener('DOMContentLoaded', async ()=>{
           const respOi = await fetch('Data/donnees_oi.xlsx');
           if(respOi.ok){
             const buf = await respOi.arrayBuffer(); const f = new File([buf],'donnees_oi.xlsx');
-            showLoader(); await App.importExcelFile('oi', f); hideLoader();
+            showLoader();
+            try{
+              await App.importExcelFile('oi', f);
+            }finally{
+              hideLoader();
+            }
             const s=document.getElementById('status-oi'); if(s) s.textContent = 'Chargé depuis donnees_oi.xlsx';
             console.debug('donnees_oi.xlsx imported into OI');
           } else {
@@ -114,7 +134,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
           // Expecting up to three files; try to recognize by name
           for(const f of files){
             const name = (f.name||'').toLowerCase();
-            try{ showLoader();
+            showLoader();
+            try{
               if(name.includes('donnees_ot')){ await App.importExcelFile('ot', f); const s=document.getElementById('status-ot'); if(s) s.textContent = `Chargé: ${f.name}`; }
               else if(name.includes('donnees_oi')){ await App.importExcelFile('oi', f); const s=document.getElementById('status-oi'); if(s) s.textContent = `Chargé: ${f.name}`; }
               else if(name.includes('donnees') && !name.includes('ot') && !name.includes('oi')){ await loadFromFile(f); }
@@ -149,8 +170,11 @@ document.addEventListener('DOMContentLoaded', ()=>{
                   }
                   const buf = await resp.arrayBuffer(); const f = new File([buf], name);
                   showLoader();
-                  if(kind==='ppa') await loadFromFile(f); else await App.importExcelFile(kind, f);
-                  hideLoader();
+                  try{
+                    if(kind==='ppa') await loadFromFile(f); else await App.importExcelFile(kind, f);
+                  }finally{
+                    hideLoader();
+                  }
                   if(status){ status.textContent = `${name} chargé.`; }
                 }catch(err){ console.error('Error loading default', name, err); if(status) status.textContent = `Erreur chargement ${name}: ${err.message||err}`; window._defaultsFetchFailed = true; }
               }
@@ -326,15 +350,30 @@ async function tryAutoRestore(){
     // PPA
     const savedFile = await idbGet(KEY_FILE);
     if(savedFile && await verifyPermission(savedFile,false)){
-      fileHandle = savedFile; const f = await savedFile.getFile(); showLoader(); await loadFromFile(f); hideLoader();
-      document.getElementById('accessCard').classList.add('d-none'); setStatus('Fichier PPA restauré automatiquement.');
+      fileHandle = savedFile; const f = await savedFile.getFile();
+      showLoader();
+      try{
+        await loadFromFile(f);
+        document.getElementById('accessCard').classList.add('d-none');
+        setStatus('Fichier PPA restauré automatiquement.');
+      }finally{
+        hideLoader();
+      }
     } else {
       const savedDir = await idbGet(KEY_DIR);
       if(savedDir && await verifyPermission(savedDir,false)){
         for await(const [name,h] of savedDir.entries()){
           if(h.kind==='file' && /^(donnees)\.xlsx$/i.test(name)){
-            fileHandle = h; const f = await h.getFile(); showLoader(); await loadFromFile(f); hideLoader();
-            document.getElementById('accessCard').classList.add('d-none'); setStatus('Dossier PPA restauré automatiquement.'); break;
+            fileHandle = h; const f = await h.getFile();
+            showLoader();
+            try{
+              await loadFromFile(f);
+              document.getElementById('accessCard').classList.add('d-none');
+              setStatus('Dossier PPA restauré automatiquement.');
+            }finally{
+              hideLoader();
+            }
+            break;
           }
         }
       }
