@@ -887,9 +887,9 @@ App.Auth = (function(){
 
   async function validate(username, password){
     // Explicit demo override: accept admin / admin123
-    if(username === 'admin' && password === 'admin123'){
-      return true;
-    }
+    //if(username === 'admin' && password === 'admin123'){
+      //return true;
+    //}
     // If a global USERS list with plaintext passwords exists, prefer direct comparison
     try{
       if(typeof USERS !== 'undefined' && Array.isArray(USERS)){
