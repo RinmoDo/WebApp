@@ -129,12 +129,19 @@ function renderOT(){
   tbody.innerHTML='';
   data.forEach(r=>{
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td><a href="#" onclick="UI.linkToDossiers('${r.numero}')">${r.numero||''}</a></td>`
-      <td>${r.action||''}</td><td class="small">${escapeHTML(r.designation||'')}</td>
-      <td>${fmtMoney(r.estimation)}</td><td>${fmtMoney(r.anX)}</td><td>${fmtMoney(r.anX1)}</td><td>${fmtMoney(r.anX2)}</td>
-      <td>${escapeHTML(r.base||'')}</td><td>${escapeHTML(r.commande||'')}</td>
+    tr.innerHTML = `
+      <td><a href="#" onclick="UI.linkToDossiers('${r.numero}')">${r.numero||''}</a></td>
+      <td>${r.action||''}</td>
+      <td class="small">${escapeHTML(r.designation||'')}</td>
+      <td>${fmtMoney(r.estimation)}</td>
+      <td>${fmtMoney(r.anX)}</td>
+      <td>${fmtMoney(r.anX1)}</td>
+      <td>${fmtMoney(r.anX2)}</td>
+      <td>${escapeHTML(r.base||'')}</td>
+      <td>${escapeHTML(r.commande||'')}</td>
       <td class="text-nowrap">${isAdmin()? `<button class="btn btn-sm btn-outline-secondary me-1" onclick="UI.openForm('ot','${r.id}')">Modifier</button><button class="btn btn-sm btn-outline-danger" onclick="UI.remove('ot','${r.id}')">Supprimer</button>`:''}
-        <button class="btn btn-sm btn-primary ms-1" onclick="UI.openDetail('ot','${r.id}')">Fiche</button></td>`;
+        <button class="btn btn-sm btn-primary ms-1" onclick="UI.openDetail('ot','${r.id}')">Fiche</button></td>
+    `;
     tbody.appendChild(tr);
   });
 }
@@ -160,12 +167,19 @@ function renderOI(){
   tbody.innerHTML='';
   data.forEach(r=>{
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td><a href="#" onclick="UI.linkToDossiers('${r.numero}')">${r.numero||''}</a></td>`
-      <td>${r.action||''}</td><td class="small">${escapeHTML(r.designation||'')}</td>
-      <td>${fmtMoney(r.estimation)}</td><td>${fmtMoney(r.anX)}</td><td>${fmtMoney(r.anX1)}</td><td>${fmtMoney(r.anX2)}</td>
-      <td>${escapeHTML(r.base||'')}</td><td>${escapeHTML(r.commande||'')}</td>
+    tr.innerHTML = `
+      <td><a href="#" onclick="UI.linkToDossiers('${r.numero}')">${r.numero||''}</a></td>
+      <td>${r.action||''}</td>
+      <td class="small">${escapeHTML(r.designation||'')}</td>
+      <td>${fmtMoney(r.estimation)}</td>
+      <td>${fmtMoney(r.anX)}</td>
+      <td>${fmtMoney(r.anX1)}</td>
+      <td>${fmtMoney(r.anX2)}</td>
+      <td>${escapeHTML(r.base||'')}</td>
+      <td>${escapeHTML(r.commande||'')}</td>
       <td class="text-nowrap">${isAdmin()? `<button class="btn btn-sm btn-outline-secondary me-1" onclick="UI.openForm('oi','${r.id}')">Modifier</button><button class="btn btn-sm btn-outline-danger" onclick="UI.remove('oi','${r.id}')">Supprimer</button>`:''}
-        <button class="btn btn-sm btn-primary ms-1" onclick="UI.openDetail('oi','${r.id}')">Fiche</button></td>`;
+        <button class="btn btn-sm btn-primary ms-1" onclick="UI.openDetail('oi','${r.id}')">Fiche</button></td>
+    `;
     tbody.appendChild(tr);
   });
 }
