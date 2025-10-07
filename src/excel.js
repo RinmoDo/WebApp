@@ -213,14 +213,8 @@ function bindUI(){
         for await(const [name, h] of dataDir.entries()){
           if(h.kind==='file' && /^(donnees)\.xlsx$/i.test(name)){
             fileHandle = h; await idbSet(KEY_FILE,h);
-            const f = await h.getFile();
-            showLoader();
-            try{
-              await loadFromFile(f);
-              document.getElementById('accessCard')?.classList.add('d-none');
-            }finally{
-              hideLoader();
-            }
+            const f = await h.getFile(); showLoader(); await loadFromFile(f); hideLoader();
+            document.getElementById('accessCard')?.classList.add('d-none');
             return;
           }
         }
@@ -234,14 +228,7 @@ function bindUI(){
   if(fileInput){
     fileInput.addEventListener('change', async e=>{
       const f = e.target.files?.[0]; if(!f) return;
-      await idbDel(KEY_FILE); fileHandle=null;
-      showLoader();
-      try{
-        await loadFromFile(f);
-        document.getElementById('accessCard')?.classList.add('d-none');
-      }finally{
-        hideLoader();
-      }
+      await idbDel(KEY_FILE); fileHandle=null; showLoader(); await loadFromFile(f); hideLoader(); document.getElementById('accessCard')?.classList.add('d-none');
     });
   }
 
@@ -251,14 +238,7 @@ function bindUI(){
     ['dragleave','drop'].forEach(ev=>dropArea.addEventListener(ev,e=>{e.preventDefault(); dropArea.classList.remove('border-primary');}));
     dropArea.addEventListener('drop', async e=>{
       const f = e.dataTransfer.files?.[0]; if(!f) return;
-      await idbDel(KEY_FILE); fileHandle=null;
-      showLoader();
-      try{
-        await loadFromFile(f);
-        document.getElementById('accessCard')?.classList.add('d-none');
-      }finally{
-        hideLoader();
-      }
+      await idbDel(KEY_FILE); fileHandle=null; showLoader(); await loadFromFile(f); hideLoader(); document.getElementById('accessCard')?.classList.add('d-none');
     });
   }
 
