@@ -22,21 +22,244 @@ function saveSession(user){ localStorage.setItem('as_session', JSON.stringify(us
 function getSession(){ return JSON.parse(localStorage.getItem('as_session')||'null'); }
 function clearSession(){ localStorage.removeItem('as_session'); }
 
-function initApp(){
-  const s = getSession();
-  if(!s) return;
-  const appSection = document.getElementById('app');
-  const mainNav = document.getElementById('mainNav');
-  if(mainNav) mainNav.classList.remove('d-none');
-  if(appSection) appSection.classList.remove('d-none');
-  renderAll();
+const ROLE_LABELS = { admin:'Administrateur', user:'Utilisateur', viewer:'Lecteur' };
+const LIMITED_ROLES = new Set(['user','viewer']);
+const DEFAULT_DATASETS = [
+  { key:'launch', importKind:'launch', path:'Data/donnees.xlsx', label:'PPA', statusId:'status' },
+  { key:'ot', importKind:'ot', path:'Data/donnees_ot.xlsx', label:'budget OT', statusId:'status-ot' },
+  { key:'oi', importKind:'oi', path:'Data/donnees_oi.xlsx', label:'budget OI', statusId:'status-oi' }
+];
+
+let appReady = false;
+let initPromise = null;
+let initialDataPromise = null;
+let initialDataLoaded = false;
+
+const loader = {
+  counter: 0,
+  el(){ return document.getElementById('globalLoader'); },
+  show(message){
+    const el = this.el();
+    if(!el) return;
+    this.counter++;
+    el.classList.remove('d-none');
+    el.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(()=> el.classList.add('active'));
+    this.setMessage(message || 'Chargement…');
+  },
+  setMessage(message){
+    const el = this.el();
+    const msg = el?.querySelector('.loader-message');
+    if(msg) msg.textContent = message || 'Chargement…';
+  },
+  hide(){
+    const el = this.el();
+    if(!el) return;
+    this.counter = Math.max(0, this.counter-1);
+    if(this.counter>0) return;
+    el.classList.remove('active');
+    setTimeout(()=>{
+      if(this.counter===0){
+        el.classList.add('d-none');
+        el.setAttribute('aria-hidden', 'true');
+      }
+    }, 320);
+  }
+};
+
+globalThis.AppLoader = loader;
+
+function setAppReady(flag){
+  appReady = !!flag;
+  document.body?.classList.toggle('app-active', appReady);
 }
 
-document.addEventListener('DOMContentLoaded', ()=>{
-  if(document.getElementById('app') && getSession()){
-    initApp();
+function bindLogoutButton(){
+  const btnOut = document.getElementById('btnLogout');
+  if(btnOut && !btnOut.dataset.bound){
+    btnOut.dataset.bound = '1';
+    btnOut.addEventListener('click', ev=>{
+      ev.preventDefault();
+      clearSession();
+      updateUserMenu(null);
+      resetAppView();
+      try{ if(globalThis.App && App.Auth && typeof App.Auth.initLogin === 'function'){ App.Auth.initLogin(); } }catch(e){ console.warn(e); }
+    });
   }
-});
+}
+
+function updateUserMenu(session){
+  bindLogoutButton();
+  const nameEl = document.getElementById('userMenuName');
+  if(nameEl) nameEl.textContent = session ? (session.display || session.username || '–') : '–';
+  const badge = document.getElementById('roleBadge');
+  if(badge){
+    if(session?.role){
+      const label = ROLE_LABELS[session.role] || session.role;
+      badge.textContent = label;
+      badge.classList.remove('d-none');
+    }else{
+      badge.textContent = '';
+      badge.classList.add('d-none');
+    }
+  }
+  const btnOut = document.getElementById('btnLogout');
+  if(btnOut){
+    btnOut.classList.toggle('d-none', !session);
+  }
+}
+
+function applyRolePermissions(session){
+  const role = session?.role || '';
+  if(document.body){
+    if(role){ document.body.dataset.role = role; }
+    else{ delete document.body.dataset.role; }
+    const limited = LIMITED_ROLES.has(role);
+    document.body.classList.toggle('role-user', limited);
+  }
+  if(!session) return;
+  const limited = LIMITED_ROLES.has(role);
+  const target = limited ? '#tabLaunch' : '#tabDash';
+  try{
+    const btn = document.querySelector(`#mainTabs [data-bs-target="${target}"]`);
+    if(btn && typeof bootstrap !== 'undefined' && bootstrap?.Tab){
+      bootstrap.Tab.getOrCreateInstance(btn).show();
+    }
+  }catch(e){ /* ignore */ }
+}
+
+function resetAppView(){
+  const loginScreen = document.getElementById('loginScreen');
+  if(loginScreen){
+    loginScreen.classList.remove('d-none');
+    loginScreen.classList.remove('screen-hidden');
+  }
+  const appSection = document.getElementById('app');
+  if(appSection){
+    appSection.classList.remove('app-visible');
+    if(!appSection.classList.contains('d-none')) appSection.classList.add('d-none');
+  }
+  const mainNav = document.getElementById('mainNav');
+  if(mainNav && !mainNav.classList.contains('d-none')){
+    mainNav.classList.add('d-none');
+  }
+  if(document.body){
+    document.body.classList.remove('role-user');
+    delete document.body.dataset.role;
+  }
+  setAppReady(false);
+}
+
+async function fetchExcelFile(path){
+  const resp = await fetch(path, { cache:'no-store' });
+  if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const buf = await resp.arrayBuffer();
+  const name = path.split('/').pop() || 'donnees.xlsx';
+  return new File([buf], name, { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
+async function ensureInitialDataLoaded(force=false){
+  if(force){
+    initialDataPromise = null;
+    initialDataLoaded = false;
+  }
+  if(initialDataLoaded && !force){
+    return { errors: [] };
+  }
+  if(initialDataPromise){
+    return initialDataPromise;
+  }
+  initialDataPromise = (async ()=>{
+    const errors = [];
+    for(const cfg of DEFAULT_DATASETS){
+      let stored = [];
+      try{ stored = read(cfg.key); }catch(e){ stored = []; }
+      if(!force && Array.isArray(stored) && stored.length){
+        if(cfg.statusId){
+          const statusEl = document.getElementById(cfg.statusId);
+          if(statusEl && !statusEl.textContent){ statusEl.textContent = 'Données prêtes.'; }
+        }
+        if(cfg.key==='launch'){
+          const card = document.getElementById('accessCard');
+          if(card) card.classList.add('d-none');
+        }
+        continue;
+      }
+      loader.setMessage(`Chargement ${cfg.label}…`);
+      try{
+        const file = await fetchExcelFile(cfg.path);
+        await App.importExcelFile(cfg.importKind, file);
+        if(cfg.statusId){
+          const statusEl = document.getElementById(cfg.statusId);
+          if(statusEl) statusEl.textContent = `Chargé automatiquement (${file.name})`;
+        }
+        if(cfg.key==='launch'){
+          const card = document.getElementById('accessCard');
+          if(card) card.classList.add('d-none');
+        }
+      }catch(err){
+        console.warn('Chargement automatique échoué', cfg.path, err);
+        errors.push({ dataset: cfg, error: err });
+        if(cfg.statusId){
+          const statusEl = document.getElementById(cfg.statusId);
+          if(statusEl) statusEl.textContent = `Erreur chargement automatique (${err.message||err})`;
+        }
+      }
+    }
+    loader.setMessage('Finalisation…');
+    initialDataLoaded = true;
+    return { errors };
+  })().finally(()=>{ initialDataPromise = null; });
+  return initialDataPromise;
+}
+
+async function initApp(options={}){
+  const session = getSession();
+  if(!session){
+    resetAppView();
+    updateUserMenu(null);
+    return { errors: [] };
+  }
+  if(initPromise){
+    return initPromise;
+  }
+  const { skipLoader=false, forceDataReload=false } = options;
+  const loginScreen = document.getElementById('loginScreen');
+  const appSection = document.getElementById('app');
+  const mainNav = document.getElementById('mainNav');
+
+  const runner = async ()=>{
+    if(!skipLoader) loader.show('Préparation de l’application…');
+    let result = { errors: [] };
+    try{
+      result = await ensureInitialDataLoaded(forceDataReload);
+    }catch(err){
+      console.error('Erreur chargement initial', err);
+      result = { errors: [err] };
+    }finally{
+      applyRolePermissions(session);
+      updateUserMenu(session);
+      if(mainNav) mainNav.classList.remove('d-none');
+      if(appSection){
+        appSection.classList.remove('d-none');
+        requestAnimationFrame(()=> appSection.classList.add('app-visible'));
+      }
+      if(loginScreen){
+        loginScreen.classList.add('screen-hidden');
+        setTimeout(()=> loginScreen.classList.add('d-none'), 450);
+      }
+      renderAll();
+      setAppReady(true);
+      if(!skipLoader) loader.hide();
+    }
+    return result;
+  };
+
+  initPromise = runner().catch(err=>{
+    throw err;
+  }).finally(()=>{ initPromise = null; });
+  return initPromise;
+}
 
 // ===== RENDERERS =====
 function renderAll(){ renderDashboard(); renderOT(); renderOI(); renderLaunch(); renderExec(); }
@@ -595,6 +818,9 @@ App.Auth = (function(){
     { username: "viewer", passHash: "b0f1d1e6bb338f0e92bf3b1de9cf3a8c0b37b7f9e3d6d8a28b9a8a1b9a6a9d12" }  // "view123" (fake hash placeholder, see note below)
   ];
 
+  let lockTimerId = null;
+  let submitHandler = null;
+
   // NOTE: Replace viewer hash with real hash of "view123". We'll compute below if crypto.subtle is available.
   async function sha256Hex(text){
     const enc = new TextEncoder().encode(text);
@@ -680,150 +906,121 @@ App.Auth = (function(){
   }
 
   function guard(){
-    // Called on every page except login; if no session -> redirect
     const sess = getSession();
     if(!sess){
-      // Show the embedded login screen and hide the app + hide main nav
-      const loginScreen = document.getElementById('loginScreen');
-      const appSection = document.getElementById('app');
-      const mainNav = document.getElementById('mainNav');
-      if(loginScreen){
-        loginScreen.style.display = '';
-        if(appSection) appSection.classList.add('d-none');
-        if(mainNav) mainNav.classList.add('d-none');
-        try{ if(App && App.Auth && App.Auth.initLogin) App.Auth.initLogin(); }catch(e){}
-      }
+      updateUserMenu(null);
+      resetAppView();
+      try{ initLogin(); }catch(e){ console.warn(e); }
       return;
     }
-    // Fill user menu if present
-    const el = document.getElementById("userMenuName");
-    if(el) el.textContent = sess.display || sess.username;
-    const badge = document.getElementById('roleBadge');
-    if(badge){
-      const label = sess.display || sess.username || 'Utilisateur';
-      badge.textContent = `${label} (${sess.role||'—'})`;
-      badge.classList.remove('d-none');
-    }
-    const btnOut = document.getElementById("btnLogout");
-    if(btnOut){
-      btnOut.classList.remove('d-none');
-      btnOut.addEventListener("click", (ev)=>{
-        ev.preventDefault();
-        clearSession();
-        // show embedded login, hide app and main nav
-        const loginScreen = document.getElementById('loginScreen');
-        const appSection = document.getElementById('app');
-        const mainNav = document.getElementById('mainNav');
-        if(loginScreen){ if(appSection) appSection.classList.add('d-none'); if(mainNav) mainNav.classList.add('d-none'); loginScreen.style.display = ''; try{ if(App && App.Auth && App.Auth.initLogin) App.Auth.initLogin(); }catch(e){} return; }
-      }, {once:true});
+    updateUserMenu(sess);
+    applyRolePermissions(sess);
+    if(!appReady){
+      initApp().catch(err=>console.error('initApp error', err));
     }
   }
 
   function initLogin(){
-    // If called before DOM is ready, defer initialization until DOMContentLoaded
     if(document.readyState === 'loading'){
       document.addEventListener('DOMContentLoaded', initLogin, {once:true});
       return;
     }
 
-    // If session already exists -> show app and hide login screen
     const sess = getSession();
-    const loginScreen = document.getElementById('loginScreen');
-    const appSection = document.getElementById('app');
-    if(sess){ if(loginScreen) loginScreen.style.display = 'none'; if(appSection) appSection.classList.remove('d-none'); initApp(); return; }
-
-    const form = document.getElementById("loginForm");
-    const user = document.getElementById("username");
-    const pass = document.getElementById("password");
-    const btn  = document.getElementById("btnLogin");
-    const chk  = document.getElementById("rememberMe");
-    const toggle = document.getElementById("togglePwd");
-    const lockHint = document.getElementById("lockHint");
-
-  // Debug: ensure elements are found
-      function devLog(){
-        try{
-          const el = document.getElementById('devLog'); if(!el) return;
-          el.style.display = 'block';
-          const args = Array.from(arguments).map(a=>{
-            try{ return (typeof a === 'string') ? a : JSON.stringify(a); }catch(e){ return String(a); }
-          }).join(' ');
-          el.textContent += args + '\n';
-          el.scrollTop = el.scrollHeight;
-        }catch(e){}
+    if(sess){
+      updateUserMenu(sess);
+      applyRolePermissions(sess);
+      if(!appReady){
+        initApp().catch(err=>console.error('initApp error', err));
+      } else {
+        const mainNav = document.getElementById('mainNav');
+        const appSection = document.getElementById('app');
+        const loginScreen = document.getElementById('loginScreen');
+        if(mainNav) mainNav.classList.remove('d-none');
+        if(appSection){
+          appSection.classList.remove('d-none');
+          appSection.classList.add('app-visible');
+        }
+        if(loginScreen){
+          loginScreen.classList.add('screen-hidden');
+          setTimeout(()=> loginScreen.classList.add('d-none'), 450);
+        }
       }
-      try{ console.debug('App.Auth.initLogin called', { formExists: !!form, userExists: !!user, passExists: !!pass, btnExists: !!btn, chkExists: !!chk }); devLog('App.Auth.initLogin called', { formExists: !!form, userExists: !!user, passExists: !!pass, btnExists: !!btn, chkExists: !!chk }); }catch(e){}
+      return;
+    }
 
-  // Show login screen and hide app section (in-page login)
-  const mainNav = document.getElementById('mainNav');
-  if(loginScreen) loginScreen.style.display = '';
-  if(appSection) appSection.classList.add('d-none');
-  // keep mainNav visible
-  try{
-    const uidInput = document.getElementById('username');
-    if(uidInput){ uidInput.focus(); uidInput.select && uidInput.select(); }
-    else { setTimeout(()=>{ const u=document.getElementById('username'); if(u){ u.focus(); u.select && u.select(); } }, 200); }
-  }catch(e){}
+    resetAppView();
+    updateUserMenu(null);
+    hideAlert();
 
-    // Toggle password visibility
-    toggle?.addEventListener("click", ()=>{
-      const vis = pass.type === "text";
-      pass.type = vis ? "password" : "text";
-      toggle.textContent = vis ? "Afficher" : "Masquer";
-    });
+    const form = document.getElementById('loginForm');
+    const user = document.getElementById('username');
+    const pass = document.getElementById('password');
+    const btn  = document.getElementById('btnLogin');
+    const chk  = document.getElementById('rememberMe');
+    const toggle = document.getElementById('togglePwd');
+    const lockHint = document.getElementById('lockHint');
 
-    // Lockout check
+    if(form) form.classList.remove('was-validated');
+    if(btn){
+      btn.disabled = false;
+      btn.textContent = 'Se connecter';
+    }
+
+    const remember = localStorage.getItem('as_remember') === '1';
+    if(chk) chk.checked = remember;
+    if(remember && user){ user.value = localStorage.getItem('as_last_user') || ''; }
+
+    try{
+      user?.focus();
+      user?.select?.();
+    }catch(e){
+      setTimeout(()=>{ try{ user?.focus(); user?.select?.(); }catch(_){} }, 200);
+    }
+
+    if(toggle && !toggle.dataset.bound){
+      toggle.dataset.bound = '1';
+      toggle.addEventListener('click', ()=>{
+        if(!pass) return;
+        const vis = pass.type === 'text';
+        pass.type = vis ? 'password' : 'text';
+        toggle.textContent = vis ? 'Afficher' : 'Masquer';
+      });
+    }
+
+    if(lockTimerId){ clearInterval(lockTimerId); lockTimerId = null; }
+
     function updateLock(){
       const L = getLock();
+      if(!btn) return false;
       if(L.until > now()){
         const rem = L.until - now();
         btn.disabled = true;
-        lockHint.textContent = lockedMsg(rem);
+        if(lockHint) lockHint.textContent = lockedMsg(rem);
         return true;
-      } else {
-        btn.disabled = false;
-        lockHint.textContent = "";
-        return false;
       }
+      btn.disabled = false;
+      if(lockHint) lockHint.textContent = '';
+      return false;
     }
     updateLock();
-    const tm = setInterval(updateLock, 1000);
+    lockTimerId = setInterval(updateLock, 1000);
 
-    // Client-side validation
     async function handleLoginSubmit(e){
-      try{
-        if(e && e.preventDefault) e.preventDefault();
-        console.debug('App.Auth.submit handler invoked', { username: user?.value?.trim?.() || '', passLen: user? (pass.value.length) : 0 });
-        devLog('submit invoked', { username: user?.value?.trim?.() || '', passLen: user? (pass.value.length) : 0 });
-      }catch(err){ /* ignore logging errors */ }
-
+      if(e && e.preventDefault) e.preventDefault();
       hideAlert();
       if(updateLock()) return;
-
-      if(form) form.classList.add("was-validated");
-      if(!user.value.trim() || !pass.value.trim()){
+      if(form) form.classList.add('was-validated');
+      if(!user?.value?.trim?.() || !pass?.value?.trim?.()){
         showAlert("Veuillez renseigner l'utilisateur et le mot de passe.");
         return;
       }
 
-      btn.disabled = true; btn.textContent = "Vérification…";
+      const username = user.value.trim();
+      if(btn){ btn.disabled = true; btn.textContent = 'Vérification…'; }
       try{
-        console.debug('App.Auth: validating user', { username: user.value.trim() }); devLog('validating', { username: user.value.trim() });
-        const ok = await validate(user.value.trim(), pass.value);
-        console.debug('App.Auth: validate result', { ok }); devLog('validate result', { ok });
-        if(ok){
-          clearLock();
-          persistSession(user.value.trim());
-          console.debug('App.Auth: login success, showing app'); devLog('login success, showing app');
-          // hide login and show app in-page
-          const mainNav = document.getElementById('mainNav');
-          if(loginScreen) loginScreen.style.display = 'none';
-          if(appSection) appSection.classList.remove('d-none');
-          // ensure mainNav is visible after login
-          if(mainNav) mainNav.style.display = '';
-          initApp();
-        } else {
-          console.debug('App.Auth: login failed'); devLog('login failed');
+        const ok = await validate(username, pass.value);
+        if(!ok){
           const L = getLock();
           L.attempts = (L.attempts||0) + 1;
           if(L.attempts >= MAX_ATTEMPTS){
@@ -831,33 +1028,47 @@ App.Auth = (function(){
             L.attempts = 0;
             showAlert("Identifiants invalides. Votre accès est temporairement bloqué.");
           }else{
-            showAlert("Identifiants invalides. Tentative " + L.attempts + " / " + MAX_ATTEMPTS + ".");
+            showAlert(`Identifiants invalides. Tentative ${L.attempts} / ${MAX_ATTEMPTS}.`);
           }
           setLock(L);
           updateLock();
+          return;
         }
+
+        clearLock();
+        const sessionUser = persistSession(username);
+        if(chk){
+          if(chk.checked){
+            localStorage.setItem('as_remember', '1');
+            localStorage.setItem('as_last_user', username);
+          }else{
+            localStorage.removeItem('as_remember');
+            localStorage.removeItem('as_last_user');
+          }
+        }
+        if(btn) btn.textContent = 'Chargement…';
+        const result = await initApp();
+        if(result?.errors?.length){
+          console.warn('Certaines données n\'ont pas pu être chargées automatiquement.', result.errors);
+        }
+        if(lockTimerId){ clearInterval(lockTimerId); lockTimerId = null; }
+        updateUserMenu(sessionUser);
       }catch(err){
         console.error('App.Auth: unexpected error', err);
-        devLog('login error', String(err));
-        showAlert("Erreur inattendue. Réessayez.");
+        showAlert('Erreur inattendue. Réessayez.');
       }finally{
-        btn.disabled = false; btn.textContent = "Se connecter";
+        if(btn){ btn.disabled = false; btn.textContent = 'Se connecter'; }
       }
     }
 
-    // Attach handler: prefer form submit, fallback to button click
-    try{
-      if(form){
-        form.addEventListener("submit", handleLoginSubmit, {once:false});
-      } else if(btn){
-        btn.addEventListener('click', handleLoginSubmit, {once:false});
-        devLog('loginForm missing: attached handler to button click');
-      } else {
-        devLog('loginForm and login button not found; cannot attach login handler');
-      }
-    }catch(attachErr){
-      console.error('Failed to attach login handler', attachErr);
-      devLog('Failed to attach login handler', String(attachErr));
+    if(form){
+      if(submitHandler){ form.removeEventListener('submit', submitHandler); }
+      submitHandler = handleLoginSubmit;
+      form.addEventListener('submit', handleLoginSubmit);
+    }else if(btn){
+      if(submitHandler){ btn.removeEventListener('click', submitHandler); }
+      submitHandler = handleLoginSubmit;
+      btn.addEventListener('click', handleLoginSubmit);
     }
   }
 
