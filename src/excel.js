@@ -177,38 +177,46 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
 function bindUI(){
   // directory pick
-  document.getElementById('pickDir').addEventListener('click', async ()=>{
-    try{
-      if(!window.showDirectoryPicker){ setStatus('Navigateur non supporté (choisissez le fichier).'); return; }
-      const dir = await window.showDirectoryPicker();
-      if(!(await verifyPermission(dir,true))){ setStatus('Permission refusée.'); return; }
-      await idbSet(KEY_DIR, dir);
-      let dataDir=dir; try{ dataDir = await dir.getDirectoryHandle('data'); }catch{ try{ dataDir = await dir.getDirectoryHandle('Data'); }catch{} }
-      for await(const [name, h] of dataDir.entries()){
-        if(h.kind==='file' && /^(donnees)\.xlsx$/i.test(name)){
-          fileHandle = h; await idbSet(KEY_FILE,h);
-          const f = await h.getFile(); showLoader(); await loadFromFile(f); hideLoader();
-          document.getElementById('accessCard').classList.add('d-none');
-          return;
+  const pickDirBtn = document.getElementById('pickDir');
+  if(pickDirBtn){
+    pickDirBtn.addEventListener('click', async ()=>{
+      try{
+        if(!window.showDirectoryPicker){ setStatus('Navigateur non supporté (choisissez le fichier).'); return; }
+        const dir = await window.showDirectoryPicker();
+        if(!(await verifyPermission(dir,true))){ setStatus('Permission refusée.'); return; }
+        await idbSet(KEY_DIR, dir);
+        let dataDir=dir; try{ dataDir = await dir.getDirectoryHandle('data'); }catch{ try{ dataDir = await dir.getDirectoryHandle('Data'); }catch{} }
+        for await(const [name, h] of dataDir.entries()){
+          if(h.kind==='file' && /^(donnees)\.xlsx$/i.test(name)){
+            fileHandle = h; await idbSet(KEY_FILE,h);
+            const f = await h.getFile(); showLoader(); await loadFromFile(f); hideLoader();
+            document.getElementById('accessCard')?.classList.add('d-none');
+            return;
+          }
         }
-      }
-      setStatus('donnees.xlsx introuvable dans ce dossier.');
-    }catch(e){ setStatus('Erreur: '+e.message); }
-  });
+        setStatus('donnees.xlsx introuvable dans ce dossier.');
+      }catch(e){ setStatus('Erreur: '+e.message); }
+    });
+  }
 
   // file input
-  document.getElementById('fileInput').addEventListener('change', async e=>{
-    const f = e.target.files?.[0]; if(!f) return;
-    await idbDel(KEY_FILE); fileHandle=null; showLoader(); await loadFromFile(f); hideLoader(); document.getElementById('accessCard').classList.add('d-none');
-  });
+  const fileInput = document.getElementById('fileInput');
+  if(fileInput){
+    fileInput.addEventListener('change', async e=>{
+      const f = e.target.files?.[0]; if(!f) return;
+      await idbDel(KEY_FILE); fileHandle=null; showLoader(); await loadFromFile(f); hideLoader(); document.getElementById('accessCard')?.classList.add('d-none');
+    });
+  }
 
   // drag & drop
-  ;['dragenter','dragover'].forEach(ev=>dropArea.addEventListener(ev,e=>{e.preventDefault(); dropArea.classList.add('border-primary');}));
-  ;['dragleave','drop'].forEach(ev=>dropArea.addEventListener(ev,e=>{e.preventDefault(); dropArea.classList.remove('border-primary');}));
-  dropArea.addEventListener('drop', async e=>{
-    const f = e.dataTransfer.files?.[0]; if(!f) return;
-    await idbDel(KEY_FILE); fileHandle=null; showLoader(); await loadFromFile(f); hideLoader(); document.getElementById('accessCard').classList.add('d-none');
-  });
+  if(dropArea){
+    ['dragenter','dragover'].forEach(ev=>dropArea.addEventListener(ev,e=>{e.preventDefault(); dropArea.classList.add('border-primary');}));
+    ['dragleave','drop'].forEach(ev=>dropArea.addEventListener(ev,e=>{e.preventDefault(); dropArea.classList.remove('border-primary');}));
+    dropArea.addEventListener('drop', async e=>{
+      const f = e.dataTransfer.files?.[0]; if(!f) return;
+      await idbDel(KEY_FILE); fileHandle=null; showLoader(); await loadFromFile(f); hideLoader(); document.getElementById('accessCard')?.classList.add('d-none');
+    });
+  }
 
   // OT / OI: bind pick buttons and drop areas (delegate parsing to App.importExcelFile)
   try{
@@ -260,13 +268,20 @@ function bindUI(){
   try{ const btnOt = document.getElementById('btnSave-ot'); if(btnOt) btnOt.disabled = false; const btnOi = document.getElementById('btnSave-oi'); if(btnOi) btnOi.disabled = false; }catch(e){}
 
   // filters
-  ['#fCategorie','#fOt','#fAction','#fAnnee'].forEach(id=>$(id).addEventListener('change', applyFilters));
-  document.getElementById('fSearch').addEventListener('input', applyFilters);
-  document.getElementById('btnReset').addEventListener('click', ()=>{ ['#fCategorie','#fOt','#fAction','#fAnnee'].forEach(id=>$(id).value=''); document.getElementById('fSearch').value=''; applyFilters(); });
+  ['#fCategorie','#fOt','#fAction','#fAnnee'].forEach(id=>{ const el=$(id); if(el) el.addEventListener('change', applyFilters); });
+  const searchInput = document.getElementById('fSearch'); if(searchInput) searchInput.addEventListener('input', applyFilters);
+  const resetBtn = document.getElementById('btnReset');
+  if(resetBtn){
+    resetBtn.addEventListener('click', ()=>{
+      ['#fCategorie','#fOt','#fAction','#fAnnee'].forEach(id=>{ const el=$(id); if(el) el.value=''; });
+      if(searchInput) searchInput.value='';
+      applyFilters();
+    });
+  }
 
   // actions
-  document.getElementById('btnSave').addEventListener('click', saveExcel);
-  document.getElementById('btnExport').addEventListener('click', exportExcel);
+  const btnSave = document.getElementById('btnSave'); if(btnSave) btnSave.addEventListener('click', saveExcel);
+  const btnExport = document.getElementById('btnExport'); if(btnExport) btnExport.addEventListener('click', exportExcel);
 
   // OT/OI save bindings (use saved file handle if available, otherwise fallback to export)
   try{
