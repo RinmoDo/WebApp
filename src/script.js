@@ -26,6 +26,8 @@ function initApp(){
   const s = getSession();
   if(!s) return;
   const appSection = document.getElementById('app');
+  const mainNav = document.getElementById('mainNav');
+  if(mainNav) mainNav.classList.remove('d-none');
   if(appSection) appSection.classList.remove('d-none');
   renderAll();
 }
@@ -681,7 +683,16 @@ App.Auth = (function(){
     // Called on every page except login; if no session -> redirect
     const sess = getSession();
     if(!sess){
-      window.location.href = "login.html";
+      // Show the embedded login screen and hide the app + hide main nav
+      const loginScreen = document.getElementById('loginScreen');
+      const appSection = document.getElementById('app');
+      const mainNav = document.getElementById('mainNav');
+      if(loginScreen){
+        loginScreen.style.display = '';
+        if(appSection) appSection.classList.add('d-none');
+        if(mainNav) mainNav.classList.add('d-none');
+        try{ if(App && App.Auth && App.Auth.initLogin) App.Auth.initLogin(); }catch(e){}
+      }
       return;
     }
     // Fill user menu if present
@@ -699,15 +710,27 @@ App.Auth = (function(){
       btnOut.addEventListener("click", (ev)=>{
         ev.preventDefault();
         clearSession();
-        window.location.href = "login.html";
+        // show embedded login, hide app and main nav
+        const loginScreen = document.getElementById('loginScreen');
+        const appSection = document.getElementById('app');
+        const mainNav = document.getElementById('mainNav');
+        if(loginScreen){ if(appSection) appSection.classList.add('d-none'); if(mainNav) mainNav.classList.add('d-none'); loginScreen.style.display = ''; try{ if(App && App.Auth && App.Auth.initLogin) App.Auth.initLogin(); }catch(e){} return; }
       }, {once:true});
     }
   }
 
   function initLogin(){
-    // If session already exists -> go to index
+    // If called before DOM is ready, defer initialization until DOMContentLoaded
+    if(document.readyState === 'loading'){
+      document.addEventListener('DOMContentLoaded', initLogin, {once:true});
+      return;
+    }
+
+    // If session already exists -> show app and hide login screen
     const sess = getSession();
-    if(sess){ window.location.href = "index.html"; return; }
+    const loginScreen = document.getElementById('loginScreen');
+    const appSection = document.getElementById('app');
+    if(sess){ if(loginScreen) loginScreen.style.display = 'none'; if(appSection) appSection.classList.remove('d-none'); initApp(); return; }
 
     const form = document.getElementById("loginForm");
     const user = document.getElementById("username");
@@ -730,6 +753,17 @@ App.Auth = (function(){
         }catch(e){}
       }
       try{ console.debug('App.Auth.initLogin called', { formExists: !!form, userExists: !!user, passExists: !!pass, btnExists: !!btn, chkExists: !!chk }); devLog('App.Auth.initLogin called', { formExists: !!form, userExists: !!user, passExists: !!pass, btnExists: !!btn, chkExists: !!chk }); }catch(e){}
+
+  // Show login screen and hide app section (in-page login)
+  const mainNav = document.getElementById('mainNav');
+  if(loginScreen) loginScreen.style.display = '';
+  if(appSection) appSection.classList.add('d-none');
+  // keep mainNav visible
+  try{
+    const uidInput = document.getElementById('username');
+    if(uidInput){ uidInput.focus(); uidInput.select && uidInput.select(); }
+    else { setTimeout(()=>{ const u=document.getElementById('username'); if(u){ u.focus(); u.select && u.select(); } }, 200); }
+  }catch(e){}
 
     // Toggle password visibility
     toggle?.addEventListener("click", ()=>{
@@ -756,13 +790,17 @@ App.Auth = (function(){
     const tm = setInterval(updateLock, 1000);
 
     // Client-side validation
-    form.addEventListener("submit", async (e)=>{
-      e.preventDefault();
-  try{ console.debug('App.Auth.submit handler invoked', { username: user?.value?.trim?.() || '', passLen: user? (pass.value.length) : 0 }); devLog('submit invoked', { username: user?.value?.trim?.() || '', passLen: user? (pass.value.length) : 0 }); }catch(e){}
+    async function handleLoginSubmit(e){
+      try{
+        if(e && e.preventDefault) e.preventDefault();
+        console.debug('App.Auth.submit handler invoked', { username: user?.value?.trim?.() || '', passLen: user? (pass.value.length) : 0 });
+        devLog('submit invoked', { username: user?.value?.trim?.() || '', passLen: user? (pass.value.length) : 0 });
+      }catch(err){ /* ignore logging errors */ }
+
       hideAlert();
       if(updateLock()) return;
 
-      form.classList.add("was-validated");
+      if(form) form.classList.add("was-validated");
       if(!user.value.trim() || !pass.value.trim()){
         showAlert("Veuillez renseigner l'utilisateur et le mot de passe.");
         return;
@@ -770,14 +808,20 @@ App.Auth = (function(){
 
       btn.disabled = true; btn.textContent = "Vérification…";
       try{
-  console.debug('App.Auth: validating user', { username: user.value.trim() }); devLog('validating', { username: user.value.trim() });
+        console.debug('App.Auth: validating user', { username: user.value.trim() }); devLog('validating', { username: user.value.trim() });
         const ok = await validate(user.value.trim(), pass.value);
-  console.debug('App.Auth: validate result', { ok }); devLog('validate result', { ok });
+        console.debug('App.Auth: validate result', { ok }); devLog('validate result', { ok });
         if(ok){
           clearLock();
           persistSession(user.value.trim());
-          console.debug('App.Auth: login success, redirecting'); devLog('login success, redirecting');
-          window.location.href = "index.html";
+          console.debug('App.Auth: login success, showing app'); devLog('login success, showing app');
+          // hide login and show app in-page
+          const mainNav = document.getElementById('mainNav');
+          if(loginScreen) loginScreen.style.display = 'none';
+          if(appSection) appSection.classList.remove('d-none');
+          // ensure mainNav is visible after login
+          if(mainNav) mainNav.style.display = '';
+          initApp();
         } else {
           console.debug('App.Auth: login failed'); devLog('login failed');
           const L = getLock();
@@ -794,11 +838,27 @@ App.Auth = (function(){
         }
       }catch(err){
         console.error('App.Auth: unexpected error', err);
+        devLog('login error', String(err));
         showAlert("Erreur inattendue. Réessayez.");
       }finally{
         btn.disabled = false; btn.textContent = "Se connecter";
       }
-    }, {once:false});
+    }
+
+    // Attach handler: prefer form submit, fallback to button click
+    try{
+      if(form){
+        form.addEventListener("submit", handleLoginSubmit, {once:false});
+      } else if(btn){
+        btn.addEventListener('click', handleLoginSubmit, {once:false});
+        devLog('loginForm missing: attached handler to button click');
+      } else {
+        devLog('loginForm and login button not found; cannot attach login handler');
+      }
+    }catch(attachErr){
+      console.error('Failed to attach login handler', attachErr);
+      devLog('Failed to attach login handler', String(attachErr));
+    }
   }
 
   async function login(username, password, options={}){
