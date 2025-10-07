@@ -21,36 +21,12 @@
     <div class="d-flex align-items-center gap-3">
       <span class="small text-muted">Connecté&nbsp;: <strong id="userMenuName">–</strong></span>
       <span id="roleBadge" class="badge bg-secondary badge-role d-none"></span>
-      <button class="btn btn-sm btn-outline-secondary" id="btnLogout">Déconnexion</button>
+      <button class="btn btn-sm btn-outline-secondary d-none" id="btnLogout">Déconnexion</button>
     </div>
   </div>
 </nav>
 
 <main class="container my-4">
-
-  <!-- LOGIN -->
-  <section id="loginCard" class="row justify-content-center">
-    <div class="col-md-5">
-      <div class="card shadow-sm">
-        <div class="card-body">
-          <h5 class="card-title text-center text-primary">Authentification</h5>
-          <div id="loginAlert" class="alert alert-danger d-none">Identifiants invalides.</div>
-          <div class="mb-3">
-            <label class="form-label">Utilisateur</label>
-            <input id="user" class="form-control" autocomplete="username">
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Mot de passe</label>
-            <input id="pass" type="password" class="form-control" autocomplete="current-password">
-          </div>
-          <div class="d-grid">
-            <button class="btn btn-primary" id="btnLogin">Se connecter</button>
-          </div>
-          <div class="text-muted small mt-2">Exemple: admin <code>admin/admin123</code> • user <code>user/user123</code></div>
-        </div>
-      </div>
-    </div>
-  </section>
 
   <!-- APP -->
   <section id="app" class="d-none">
@@ -96,6 +72,50 @@
                 </div></div>
               </div>
             </div>
+            <div class="row g-3 mt-1">
+              <div class="col-12 col-md-4">
+                <div class="card shadow-sm h-100"><div class="card-body">
+                  <div class="small text-muted">Nombre d'OT chargés</div>
+                  <div class="fs-4 fw-bold" id="dashOtCount">–</div>
+                </div></div>
+              </div>
+              <div class="col-12 col-md-4">
+                <div class="card shadow-sm h-100"><div class="card-body">
+                  <div class="small text-muted">Nombre de projets OI</div>
+                  <div class="fs-4 fw-bold" id="dashOiCount">–</div>
+                </div></div>
+              </div>
+              <div class="col-12 col-md-4">
+                <div class="card shadow-sm h-100"><div class="card-body">
+                  <div class="small text-muted">Dossiers PPA suivis</div>
+                  <div class="fs-4 fw-bold" id="dashPpaCount">–</div>
+                </div></div>
+              </div>
+            </div>
+            <div class="row g-3 mt-1">
+              <div class="col-12 col-lg-6">
+                <div class="card shadow-sm h-100">
+                  <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Top 5 OT par budget</span>
+                    <small class="text-muted" id="dashOtTotal">–</small>
+                  </div>
+                  <div class="card-body">
+                    <div id="dashOtTop" class="small text-muted">Importez un fichier OT pour afficher les plus importants budgets.</div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-12 col-lg-6">
+                <div class="card shadow-sm h-100">
+                  <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Top 5 OI par budget</span>
+                    <small class="text-muted" id="dashOiTotal">–</small>
+                  </div>
+                  <div class="card-body">
+                    <div id="dashOiTop" class="small text-muted">Importez un fichier OI pour afficher les plus importants budgets.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </section>
       </div>
 
@@ -113,6 +133,7 @@
           <div class="card-body">
             <div class="d-flex align-items-center">
               <button id="pickDir-oi" class="btn btn-primary btn-sm"><i class="bi bi-folder2-open me-1"></i>Choisir/Importer</button>
+              <input id="fileInput-oi" type="file" accept=".xlsx" hidden>
             </div>
           </div>
         </div>
@@ -120,6 +141,26 @@
         <!-- OI budget section Filtre -->
         <div class="container my-4" id="oi-budget">
           <h3 class="mb-3">Budget d’investissement (OI)</h3>
+          <div class="row g-3 mb-3">
+            <div class="col-12 col-sm-6 col-lg-3">
+              <div class="card shadow-sm h-100"><div class="card-body">
+                <div class="small text-muted">OI chargés</div>
+                <div class="fs-5 fw-semibold" id="oiCount">–</div>
+              </div></div>
+            </div>
+            <div class="col-12 col-sm-6 col-lg-3">
+              <div class="card shadow-sm h-100"><div class="card-body">
+                <div class="small text-muted">Budget total</div>
+                <div class="fs-5 fw-semibold" id="oiSum">–</div>
+              </div></div>
+            </div>
+            <div class="col-12 col-sm-6 col-lg-3">
+              <div class="card shadow-sm h-100"><div class="card-body">
+                <div class="small text-muted" id="oiYearLabel">Année en cours</div>
+                <div class="fs-6" id="oiPct">–</div>
+              </div></div>
+            </div>
+          </div>
           <div class="d-flex gap-2 flex-wrap mb-2">
             <select id="oiFilter" class="form-select" style="max-width:220px">
               <option value="">— Toutes les catégories —</option>
@@ -162,6 +203,7 @@
           <div class="card-body">
             <div class="d-flex align-items-center">
               <button id="pickDir-ot" class="btn btn-primary btn-sm"><i class="bi bi-folder2-open me-1"></i>Choisir/Importer</button>
+              <input id="fileInput-ot" type="file" accept=".xlsx" hidden>
             </div>
           </div>
         </div>
@@ -169,6 +211,26 @@
         <!-- OT budget section Filtre -->
         <div class="container my-4" id="ot-budget">
           <h3 class="mb-3">Budget de fonctionnement (OT)</h3>
+          <div class="row g-3 mb-3">
+            <div class="col-12 col-sm-6 col-lg-3">
+              <div class="card shadow-sm h-100"><div class="card-body">
+                <div class="small text-muted">OT chargés</div>
+                <div class="fs-5 fw-semibold" id="otCount">–</div>
+              </div></div>
+            </div>
+            <div class="col-12 col-sm-6 col-lg-3">
+              <div class="card shadow-sm h-100"><div class="card-body">
+                <div class="small text-muted">Budget total</div>
+                <div class="fs-5 fw-semibold" id="otSum">–</div>
+              </div></div>
+            </div>
+            <div class="col-12 col-sm-6 col-lg-3">
+              <div class="card shadow-sm h-100"><div class="card-body">
+                <div class="small text-muted" id="otYearLabel">Année en cours</div>
+                <div class="fs-6" id="otPct">–</div>
+              </div></div>
+            </div>
+          </div>
           <div class="d-flex gap-2 flex-wrap mb-2">
             <select id="otFilter" class="form-select" style="max-width:220px">
               <option value="">— Tous les OT —</option>

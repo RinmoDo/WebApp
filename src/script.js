@@ -1,7 +1,8 @@
 /* Achat & Suivi — Front only (localStorage persistence) */
 const USERS = [
-  {username:'admin', password:'admin123', role:'admin', display:'Administrateur'},
-  {username:'user',  password:'user123',  role:'user',  display:'Utilisateur'}
+  {username:'admin',  password:'admin123', role:'admin',  display:'Administrateur'},
+  {username:'user',   password:'user123',  role:'user',   display:'Utilisateur'},
+  {username:'viewer', password:'view123',  role:'viewer', display:'Lecteur'}
 ];
 const STORAGE = {
   ot: 'as_ot', oi: 'as_oi', launch: 'as_launch', exec: 'as_exec', pj: 'as_pj'
@@ -21,132 +22,164 @@ function saveSession(user){ localStorage.setItem('as_session', JSON.stringify(us
 function getSession(){ return JSON.parse(localStorage.getItem('as_session')||'null'); }
 function clearSession(){ localStorage.removeItem('as_session'); }
 
-// The login flow is handled by App.Auth (see bottom of file).
-// Avoid attaching a duplicate click handler that references non-existent IDs which would throw.
-const _btnLogout = document.getElementById('btnLogout');
-if(_btnLogout){
-  _btnLogout.addEventListener('click', ()=>{ clearSession(); window.location.href = 'login.html'; });
-}
-
 function initApp(){
-  const s = getSession(); if(!s){ return; }
-  document.getElementById('loginCard').classList.add('d-none');
-  document.getElementById('app').classList.remove('d-none');
-  document.getElementById('btnLogout').classList.remove('d-none');
-  const badge = document.getElementById('roleBadge'); badge.textContent = `${s.display} (${s.role})`; badge.classList.remove('d-none');
+  const s = getSession();
+  if(!s) return;
+  const appSection = document.getElementById('app');
+  if(appSection) appSection.classList.remove('d-none');
   renderAll();
 }
-// If the user opens index.html without a session, force them to the login page.
-try{
-  const loc = window.location.pathname || window.location.href;
-  if(String(loc).toLowerCase().includes('index.html') && !getSession()){
-    window.location.href = 'login.html';
-  }
-}catch(e){}
 
-// If a session exists, initialize the app UI only when the expected app DOM is present (avoid running on login page)
-if(getSession()){
-  if(document.getElementById('app')){
+document.addEventListener('DOMContentLoaded', ()=>{
+  if(document.getElementById('app') && getSession()){
     initApp();
-  } else {
-    console.debug('Session found but app DOM not present; skipping initApp');
   }
-}
+});
 
 // ===== RENDERERS =====
 function renderAll(){ renderDashboard(); renderOT(); renderOI(); renderLaunch(); renderExec(); }
 
 function renderDashboard(){
   try{
-    // Defensive: ensure dashboard elements exist
-    if(!document.getElementById('dashOtCount')) return;
+    if(!document.getElementById('dashboard')) return;
     const ot = Array.isArray(read('ot'))? read('ot') : [];
     const oi = Array.isArray(read('oi'))? read('oi') : [];
     const ppa = Array.isArray(read('launch'))? read('launch') : [];
 
-    const otCount = ot.length; const oiCount = oi.length; const ppaCount = ppa.length;
-    document.getElementById('dashOtCount').textContent = otCount;
-    document.getElementById('dashOiCount').textContent = oiCount;
-    document.getElementById('dashPpaCount').textContent = ppaCount;
+    const setText = (id, value) => { const el = document.getElementById(id); if(el) el.textContent = value; };
+    setText('dashOtCount', ot.length);
+    setText('dashOiCount', oi.length);
+    setText('dashPpaCount', ppa.length);
 
-    // Totals (sum of 'estimation')
-    const sumEst = arr => arr.reduce((a,b)=> a + (Number(b.estimation)||0), 0);
-    const sumOt = sumEst(ot); const sumOi = sumEst(oi); const sumPpa = sumEst(ppa);
+    const sumEst = arr => arr.reduce((acc, row)=> acc + (Number(row.estimation)||0), 0);
+    const sumOt = sumEst(ot);
+    const sumOi = sumEst(oi);
+
     const elOtTotal = document.getElementById('kpi-ot-total'); if(elOtTotal) elOtTotal.textContent = fmtMoney(sumOt);
+    const realizedOt = ot.reduce((acc,row)=> acc + (Number(row.realise || row.anX || 0)), 0);
+    const otRatio = sumOt>0 ? realizedOt/sumOt : 0;
     const elOtProgress = document.getElementById('kpi-ot-progress');
-    // For progress, compute percent of current-year realization vs total estimation
-    const sumYear = (arr)=> arr.reduce((a,b)=> a + (Number(b.anX)||0), 0);
-    const realizedOt = sumYear(ot);
-    const pctOt = sumOt > 0 ? Math.min(100, Math.round((realizedOt / sumOt) * 100)) : 0;
-    if(elOtProgress) elOtProgress.style.width = pctOt + '%';
-    const elOtTaux = document.getElementById('kpi-ot-taux'); if(elOtTaux) elOtTaux.textContent = (sumOt>0) ? `${fmtPercent(realizedOt / sumOt)} (${fmtMoney(realizedOt)})` : fmtMoney(realizedOt);
+    if(elOtProgress){
+      const pct = Math.min(100, Math.round(otRatio*100));
+      elOtProgress.style.width = pct + '%';
+      elOtProgress.setAttribute('aria-valuenow', pct);
+      elOtProgress.setAttribute('aria-valuemin', '0');
+      elOtProgress.setAttribute('aria-valuemax', '100');
+    }
+    const elOtTaux = document.getElementById('kpi-ot-taux');
+    if(elOtTaux){
+      elOtTaux.textContent = sumOt>0 ? `${fmtPercent(otRatio)} (${fmtMoney(realizedOt)})` : fmtMoney(realizedOt);
+    }
 
-    // OI KPIs: variance = budget - actual; show count and subtext
-    const oiBudgetTotal = sumOi; // total budget (estimation)
-    const oiActual = oi.reduce((a,b)=> a + (Number(b.realise || b.actual || 0)), 0) || oi.reduce((a,b)=> a + (Number(b.anX)||0), 0);
-    const oiVariance = oiBudgetTotal - oiActual;
-    const kpiOiVar = document.getElementById('kpi-oi-variance'); if(kpiOiVar) kpiOiVar.textContent = (oiVariance>=0? '+':'−') + (Math.abs(oiVariance)? fmtMoney(Math.abs(oiVariance)) : fmtMoney(0));
-    const kpiOiSub = document.getElementById('kpi-oi-sub'); if(kpiOiSub) kpiOiSub.textContent = `Budget: ${fmtMoney(oiBudgetTotal)} | Réalisé: ${fmtMoney(oiActual)}`;
-    const kpiOiCount = document.getElementById('kpi-oi-count'); if(kpiOiCount) kpiOiCount.textContent = oiCount;
+    const oiActual = oi.reduce((acc,row)=> acc + (Number(row.realise || row.actual || row.anX || 0)), 0);
+    const oiVariance = sumOi - oiActual;
+    const kpiOiVar = document.getElementById('kpi-oi-variance');
+    if(kpiOiVar){
+      const absVal = fmtMoney(Math.abs(oiVariance));
+      kpiOiVar.textContent = oiVariance===0 ? fmtMoney(0) : `${oiVariance>=0?'+':'−'}${absVal}`;
+    }
+    const kpiOiSub = document.getElementById('kpi-oi-sub');
+    if(kpiOiSub){
+      kpiOiSub.textContent = `Budget: ${fmtMoney(sumOi)} | Réalisé: ${fmtMoney(oiActual)}`;
+    }
+    setText('kpi-oi-count', oi.length);
+
+    const updateTop = (data, containerId, totalId, emptyText) => {
+      const container = document.getElementById(containerId);
+      const totalEl = totalId ? document.getElementById(totalId) : null;
+      if(totalEl){ totalEl.textContent = data.length ? fmtMoney(sumEst(data)) : 'Aucune donnée'; }
+      if(!container) return;
+      if(!data.length){
+        container.textContent = emptyText;
+        container.classList.add('text-muted');
+        return;
+      }
+      const top = [...data].sort((a,b)=> (Number(b.estimation)||0) - (Number(a.estimation)||0)).slice(0,5);
+      const items = top.map(item=>{
+        const label = item.designation || item.numero || item.num || item.action || '—';
+        return `<li class="list-group-item d-flex justify-content-between align-items-center"><span class="text-truncate me-2" style="max-width:70%">${escapeHTML(label)}</span><span class="fw-semibold">${fmtMoney(item.estimation||0)}</span></li>`;
+      }).join('');
+      container.innerHTML = `<ol class="list-group list-group-numbered small mb-0">${items}</ol>`;
+      container.classList.remove('text-muted');
+    };
+
+    updateTop(ot, 'dashOtTop', 'dashOtTotal', 'Importez un fichier OT pour afficher les plus importants budgets.');
+    updateTop(oi, 'dashOiTop', 'dashOiTotal', 'Importez un fichier OI pour afficher les plus importants budgets.');
   }catch(e){ console.warn(e); }
 }
 
 function renderOT(){
-  // Defensive: ensure OT table exists
-  if(!document.querySelector('#tblOT tbody')) return;
+  const tbody = document.querySelector('#tblOT tbody');
+  if(!tbody) return;
   let data = read('ot');
-  // apply filters if present
+  if(!Array.isArray(data)) data = [];
   try{ data = Filters.apply('ot', data); }catch(e){}
-  // KPIs
-  document.getElementById('otCount').textContent = data.length;
+  const countEl = document.getElementById('otCount'); if(countEl) countEl.textContent = data.length;
   const total = data.reduce((a,b)=>a+(+b.estimation||0),0);
-  document.getElementById('otSum').textContent = fmtMoney(total);
-  // dynamic year label and percent for current year
+  const sumEl = document.getElementById('otSum'); if(sumEl) sumEl.textContent = fmtMoney(total);
   try{
     const y0 = new Date().getFullYear();
-    document.getElementById('otYearLabel').textContent = `Année ${y0}`;
+    const yearEl = document.getElementById('otYearLabel'); if(yearEl) yearEl.textContent = `Année ${y0}`;
   }catch(e){}
   const sumY0 = data.reduce((a,b)=>a+(+b.anX||0),0);
   const otPctEl = document.getElementById('otPct');
-  if(total>0){ otPctEl.textContent = `${fmtPercent(sumY0/total)} (${fmtMoney(sumY0)})`; } else { otPctEl.textContent = fmtMoney(sumY0); }
-  // Table
-  const tbody = document.querySelector('#tblOT tbody'); tbody.innerHTML='';
+  if(otPctEl){
+    otPctEl.textContent = total>0 ? `${fmtPercent(sumY0/total)} (${fmtMoney(sumY0)})` : fmtMoney(sumY0);
+  }
+  tbody.innerHTML='';
   data.forEach(r=>{
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td><a href="#" onclick="UI.linkToDossiers('${r.numero}')">${r.numero||''}</a></td>
-      <td>${r.action||''}</td><td class="small">${escapeHTML(r.designation||'')}</td>
-      <td>${fmtMoney(r.estimation)}</td><td>${fmtMoney(r.anX)}</td><td>${fmtMoney(r.anX1)}</td><td>${fmtMoney(r.anX2)}</td>
-      <td>${escapeHTML(r.base||'')}</td><td>${escapeHTML(r.commande||'')}</td>
+    tr.innerHTML = `
+      <td><a href="#" onclick="UI.linkToDossiers('${r.numero}')">${r.numero||''}</a></td>
+      <td>${r.action||''}</td>
+      <td class="small">${escapeHTML(r.designation||'')}</td>
+      <td>${fmtMoney(r.estimation)}</td>
+      <td>${fmtMoney(r.anX)}</td>
+      <td>${fmtMoney(r.anX1)}</td>
+      <td>${fmtMoney(r.anX2)}</td>
+      <td>${escapeHTML(r.base||'')}</td>
+      <td>${escapeHTML(r.commande||'')}</td>
       <td class="text-nowrap">${isAdmin()? `<button class="btn btn-sm btn-outline-secondary me-1" onclick="UI.openForm('ot','${r.id}')">Modifier</button><button class="btn btn-sm btn-outline-danger" onclick="UI.remove('ot','${r.id}')">Supprimer</button>`:''}
-        <button class="btn btn-sm btn-primary ms-1" onclick="UI.openDetail('ot','${r.id}')">Fiche</button></td>`;
+        <button class="btn btn-sm btn-primary ms-1" onclick="UI.openDetail('ot','${r.id}')">Fiche</button></td>
+    `;
     tbody.appendChild(tr);
   });
 }
 
 function renderOI(){
-  // Defensive: ensure OI table exists
-  if(!document.querySelector('#tblOI tbody')) return;
+  const tbody = document.querySelector('#tblOI tbody');
+  if(!tbody) return;
   let data = read('oi');
+  if(!Array.isArray(data)) data = [];
   try{ data = Filters.apply('oi', data); }catch(e){}
-  document.getElementById('oiCount').textContent = data.length;
+  const countEl = document.getElementById('oiCount'); if(countEl) countEl.textContent = data.length;
   const total = data.reduce((a,b)=>a+(+b.estimation||0),0);
-  document.getElementById('oiSum').textContent = fmtMoney(total);
+  const sumEl = document.getElementById('oiSum'); if(sumEl) sumEl.textContent = fmtMoney(total);
   try{
     const y0 = new Date().getFullYear();
-    document.getElementById('oiYearLabel').textContent = `Année ${y0}`;
+    const yearEl = document.getElementById('oiYearLabel'); if(yearEl) yearEl.textContent = `Année ${y0}`;
   }catch(e){}
   const sumY0 = data.reduce((a,b)=>a+(+b.anX||0),0);
   const oiPctEl = document.getElementById('oiPct');
-  if(total>0){ oiPctEl.textContent = `${fmtPercent(sumY0/total)} (${fmtMoney(sumY0)})`; } else { oiPctEl.textContent = fmtMoney(sumY0); }
-  const tbody = document.querySelector('#tblOI tbody'); tbody.innerHTML='';
+  if(oiPctEl){
+    oiPctEl.textContent = total>0 ? `${fmtPercent(sumY0/total)} (${fmtMoney(sumY0)})` : fmtMoney(sumY0);
+  }
+  tbody.innerHTML='';
   data.forEach(r=>{
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td><a href="#" onclick="UI.linkToDossiers('${r.numero}')">${r.numero||''}</a></td>
-      <td>${r.action||''}</td><td class="small">${escapeHTML(r.designation||'')}</td>
-      <td>${fmtMoney(r.estimation)}</td><td>${fmtMoney(r.anX)}</td><td>${fmtMoney(r.anX1)}</td><td>${fmtMoney(r.anX2)}</td>
-      <td>${escapeHTML(r.base||'')}</td><td>${escapeHTML(r.commande||'')}</td>
+    tr.innerHTML = `
+      <td><a href="#" onclick="UI.linkToDossiers('${r.numero}')">${r.numero||''}</a></td>
+      <td>${r.action||''}</td>
+      <td class="small">${escapeHTML(r.designation||'')}</td>
+      <td>${fmtMoney(r.estimation)}</td>
+      <td>${fmtMoney(r.anX)}</td>
+      <td>${fmtMoney(r.anX1)}</td>
+      <td>${fmtMoney(r.anX2)}</td>
+      <td>${escapeHTML(r.base||'')}</td>
+      <td>${escapeHTML(r.commande||'')}</td>
       <td class="text-nowrap">${isAdmin()? `<button class="btn btn-sm btn-outline-secondary me-1" onclick="UI.openForm('oi','${r.id}')">Modifier</button><button class="btn btn-sm btn-outline-danger" onclick="UI.remove('oi','${r.id}')">Supprimer</button>`:''}
-        <button class="btn btn-sm btn-primary ms-1" onclick="UI.openDetail('oi','${r.id}')">Fiche</button></td>`;
+        <button class="btn btn-sm btn-primary ms-1" onclick="UI.openDetail('oi','${r.id}')">Fiche</button></td>
+    `;
     tbody.appendChild(tr);
   });
 }
@@ -188,11 +221,14 @@ const Filters = {
 });
 
 function renderLaunch(){
+  const tbody = document.querySelector('#dossiersTable tbody');
+  if(!tbody) return;
   const data = read('launch');
-  const tbody = document.querySelector('#tblLaunch tbody'); tbody.innerHTML='';
-  data.forEach(r=>{
+  const rows = Array.isArray(data) ? data : [];
+  tbody.innerHTML='';
+  rows.forEach(r=>{
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${r.num}</td><td class="small">${escapeHTML(r.designation||'')}</td><td>${fmtMoney(r.estimation)}</td>
+    tr.innerHTML = `<td>${r.num||''}</td><td class="small">${escapeHTML(r.designation||'')}</td><td>${fmtMoney(r.estimation)}</td>
       <td>${escapeHTML(r.da||'')}</td><td>${escapeHTML(r.ao||'')}</td><td>${fmtDate(r.date_lancement)}</td>
       <td>${r.pme?'Oui':'Non'}</td><td>${escapeHTML(r.caution_prov||'')}</td><td>${fmtDate(r.date_ouverture)}</td>
       <td>${escapeHTML(r.jug_adm||'')}</td><td>${escapeHTML(r.jug_fin||'')}</td><td>${escapeHTML(r.jug_tech||'')}</td>
@@ -310,7 +346,12 @@ const UI = {
   },
 
   removePJ(idx){
-    const key = `${state.currentItemKey}:{id}`;
+    const key = `${state.currentItemKey}:${state.currentItemId}`;
+    const store = JSON.parse(localStorage.getItem(STORAGE.pj)||'{}');
+    if(!Array.isArray(store[key])) return;
+    store[key].splice(idx,1);
+    localStorage.setItem(STORAGE.pj, JSON.stringify(store));
+    UI.renderPJ();
   },
 
   linkToDossiers(num){
@@ -582,6 +623,25 @@ App.Auth = (function(){
     return "Trop d'essais. Veuillez réessayer dans " + s + "s.";
   }
 
+  function buildUserObject(uname){
+    const meta = (typeof USERS !== 'undefined' && Array.isArray(USERS)) ? USERS.find(u=>u.username===uname) : null;
+    return { username: uname, display: meta?.display || uname, role: meta?.role || 'viewer' };
+  }
+
+  function persistSession(uname){
+    const userObj = buildUserObject(uname);
+    try{
+      if(globalThis.saveSession){
+        globalThis.saveSession(userObj);
+      }else{
+        localStorage.setItem('as_session', JSON.stringify(userObj));
+      }
+    }catch(e){
+      localStorage.setItem('as_session', JSON.stringify(userObj));
+    }
+    return userObj;
+  }
+
   function showAlert(msg){
     const el = document.getElementById("authAlert");
     if(!el) return;
@@ -626,9 +686,16 @@ App.Auth = (function(){
     }
     // Fill user menu if present
     const el = document.getElementById("userMenuName");
-    if(el) el.textContent = sess.username;
+    if(el) el.textContent = sess.display || sess.username;
+    const badge = document.getElementById('roleBadge');
+    if(badge){
+      const label = sess.display || sess.username || 'Utilisateur';
+      badge.textContent = `${label} (${sess.role||'—'})`;
+      badge.classList.remove('d-none');
+    }
     const btnOut = document.getElementById("btnLogout");
     if(btnOut){
+      btnOut.classList.remove('d-none');
       btnOut.addEventListener("click", (ev)=>{
         ev.preventDefault();
         clearSession();
@@ -708,11 +775,7 @@ App.Auth = (function(){
   console.debug('App.Auth: validate result', { ok }); devLog('validate result', { ok });
         if(ok){
           clearLock();
-          // Build user object from global USERS metadata when available
-          const uname = user.value.trim();
-          const meta = (typeof USERS !== 'undefined' && Array.isArray(USERS)) ? USERS.find(u=>u.username===uname) : null;
-          const userObj = { username: uname, display: meta?.display || uname, role: meta?.role || 'viewer' };
-          try{ if(globalThis.saveSession) { globalThis.saveSession(userObj); } else { localStorage.setItem('as_session', JSON.stringify(userObj)); } }catch(e){ localStorage.setItem('as_session', JSON.stringify(userObj)); }
+          persistSession(user.value.trim());
           console.debug('App.Auth: login success, redirecting'); devLog('login success, redirecting');
           window.location.href = "index.html";
         } else {
@@ -738,7 +801,15 @@ App.Auth = (function(){
     }, {once:false});
   }
 
-  return { initLogin, guard, getSession, clearSession };
+  async function login(username, password, options={}){
+    const ok = await validate(username, password);
+    if(!ok) return { ok:false };
+    clearLock();
+    const userObj = persistSession(username);
+    return { ok:true, user:userObj };
+  }
+
+  return { initLogin, guard, getSession, clearSession, login };
 })();
 
 // Run guard on non-login pages
