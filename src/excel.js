@@ -1,8 +1,12 @@
 // ====== Page 2 : Données locales persistantes (sans serveur) ======
-// Session guard: redirect to login if there is no active session
+// Session guard handled in main app; no redirect here to keep embedded login flow.
 try{
   const s = JSON.parse(localStorage.getItem('as_session')||'null');
-  if(!s){ window.location.href = 'login.html'; }
+  if(!s){
+    document.addEventListener('DOMContentLoaded', ()=>{
+      try{ if(globalThis.App && App.Auth && typeof App.Auth.initLogin === 'function'){ App.Auth.initLogin(); } }catch(err){ console.warn(err); }
+    }, {once:true});
+  }
 }catch(e){}
 
 let fileHandle = null; // PPA handle
@@ -450,8 +454,34 @@ function exportExcel(){
 
 
 // Global loader helpers
-function showLoader(){ try{ document.getElementById('globalLoader').style.display='block'; }catch(e){} }
-function hideLoader(){ try{ document.getElementById('globalLoader').style.display='none'; }catch(e){} }
+function showLoader(message){
+  try{
+    if(globalThis.AppLoader){
+      globalThis.AppLoader.show(message);
+    }else{
+      const el = document.getElementById('globalLoader');
+      if(el){
+        const msg = el.querySelector('.loader-message');
+        if(msg) msg.textContent = message || 'Chargement…';
+        el.classList.remove('d-none');
+        requestAnimationFrame(()=> el.classList.add('active'));
+      }
+    }
+  }catch(e){}
+}
+function hideLoader(){
+  try{
+    if(globalThis.AppLoader){
+      globalThis.AppLoader.hide();
+    }else{
+      const el = document.getElementById('globalLoader');
+      if(el){
+        el.classList.remove('active');
+        setTimeout(()=> el.classList.add('d-none'), 320);
+      }
+    }
+  }catch(e){}
+}
 
 
 
