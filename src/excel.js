@@ -1,7 +1,9 @@
 // ====== Page 2 : Données locales persistantes (sans serveur) ======
 // Session guard handled in main app; no redirect here to keep embedded login flow.
 try{
-  const s = JSON.parse(localStorage.getItem('as_session')||'null');
+  const s = (typeof getSession === 'function')
+    ? getSession()
+    : JSON.parse(localStorage.getItem('as_session')||'null');
   if(!s){
     document.addEventListener('DOMContentLoaded', ()=>{
       try{ if(globalThis.App && App.Auth && typeof App.Auth.initLogin === 'function'){ App.Auth.initLogin(); } }catch(err){ console.warn(err); }
@@ -51,7 +53,17 @@ window.addEventListener('DOMContentLoaded', async ()=>{
     if(!savedFile && !savedDir){
       // try fetching /donnees.xlsx
       const resp = await fetch('Data/donnees.xlsx');
-      if(resp.ok){ const buf = await resp.arrayBuffer(); const f = new File([buf], 'donnees.xlsx'); showLoader(); await loadFromFile(f); hideLoader(); document.getElementById('accessCard')?.classList.add('d-none'); }
+      if(resp.ok){
+        const buf = await resp.arrayBuffer();
+        const f = new File([buf], 'donnees.xlsx');
+        showLoader();
+        try{
+          await loadFromFile(f);
+          document.getElementById('accessCard')?.classList.add('d-none');
+        }finally{
+          hideLoader();
+        }
+      }
     }
     // Try loading default OT/OI files into their local stores if empty
     try{
@@ -62,7 +74,12 @@ window.addEventListener('DOMContentLoaded', async ()=>{
           const respOt = await fetch('Data/donnees_ot.xlsx');
           if(respOt.ok){
             const buf = await respOt.arrayBuffer(); const f = new File([buf],'donnees_ot.xlsx');
-            showLoader(); await App.importExcelFile('ot', f); hideLoader();
+            showLoader();
+            try{
+              await App.importExcelFile('ot', f);
+            }finally{
+              hideLoader();
+            }
             const s=document.getElementById('status-ot'); if(s) s.textContent = 'Chargé depuis donnees_ot.xlsx';
             console.debug('donnees_ot.xlsx imported into OT');
           } else {
@@ -80,7 +97,12 @@ window.addEventListener('DOMContentLoaded', async ()=>{
           const respOi = await fetch('Data/donnees_oi.xlsx');
           if(respOi.ok){
             const buf = await respOi.arrayBuffer(); const f = new File([buf],'donnees_oi.xlsx');
-            showLoader(); await App.importExcelFile('oi', f); hideLoader();
+            showLoader();
+            try{
+              await App.importExcelFile('oi', f);
+            }finally{
+              hideLoader();
+            }
             const s=document.getElementById('status-oi'); if(s) s.textContent = 'Chargé depuis donnees_oi.xlsx';
             console.debug('donnees_oi.xlsx imported into OI');
           } else {
@@ -114,7 +136,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
           // Expecting up to three files; try to recognize by name
           for(const f of files){
             const name = (f.name||'').toLowerCase();
-            try{ showLoader();
+            showLoader();
+            try{
               if(name.includes('donnees_ot')){ await App.importExcelFile('ot', f); const s=document.getElementById('status-ot'); if(s) s.textContent = `Chargé: ${f.name}`; }
               else if(name.includes('donnees_oi')){ await App.importExcelFile('oi', f); const s=document.getElementById('status-oi'); if(s) s.textContent = `Chargé: ${f.name}`; }
               else if(name.includes('donnees') && !name.includes('ot') && !name.includes('oi')){ await loadFromFile(f); }
@@ -149,8 +172,11 @@ document.addEventListener('DOMContentLoaded', ()=>{
                   }
                   const buf = await resp.arrayBuffer(); const f = new File([buf], name);
                   showLoader();
-                  if(kind==='ppa') await loadFromFile(f); else await App.importExcelFile(kind, f);
-                  hideLoader();
+                  try{
+                    if(kind==='ppa') await loadFromFile(f); else await App.importExcelFile(kind, f);
+                  }finally{
+                    hideLoader();
+                  }
                   if(status){ status.textContent = `${name} chargé.`; }
                 }catch(err){ console.error('Error loading default', name, err); if(status) status.textContent = `Erreur chargement ${name}: ${err.message||err}`; window._defaultsFetchFailed = true; }
               }
@@ -177,38 +203,66 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
 function bindUI(){
   // directory pick
-  document.getElementById('pickDir').addEventListener('click', async ()=>{
-    try{
-      if(!window.showDirectoryPicker){ setStatus('Navigateur non supporté (choisissez le fichier).'); return; }
-      const dir = await window.showDirectoryPicker();
-      if(!(await verifyPermission(dir,true))){ setStatus('Permission refusée.'); return; }
-      await idbSet(KEY_DIR, dir);
-      let dataDir=dir; try{ dataDir = await dir.getDirectoryHandle('data'); }catch{ try{ dataDir = await dir.getDirectoryHandle('Data'); }catch{} }
-      for await(const [name, h] of dataDir.entries()){
-        if(h.kind==='file' && /^(donnees)\.xlsx$/i.test(name)){
-          fileHandle = h; await idbSet(KEY_FILE,h);
-          const f = await h.getFile(); showLoader(); await loadFromFile(f); hideLoader();
-          document.getElementById('accessCard').classList.add('d-none');
-          return;
+  const pickDirBtn = document.getElementById('pickDir');
+  if(pickDirBtn){
+    pickDirBtn.addEventListener('click', async ()=>{
+      try{
+        if(!window.showDirectoryPicker){ setStatus('Navigateur non supporté (choisissez le fichier).'); return; }
+        const dir = await window.showDirectoryPicker();
+        if(!(await verifyPermission(dir,true))){ setStatus('Permission refusée.'); return; }
+        await idbSet(KEY_DIR, dir);
+        let dataDir=dir; try{ dataDir = await dir.getDirectoryHandle('data'); }catch{ try{ dataDir = await dir.getDirectoryHandle('Data'); }catch{} }
+        for await(const [name, h] of dataDir.entries()){
+          if(h.kind==='file' && /^(donnees)\.xlsx$/i.test(name)){
+            fileHandle = h; await idbSet(KEY_FILE,h);
+            const f = await h.getFile();
+            showLoader();
+            try{
+              await loadFromFile(f);
+              document.getElementById('accessCard')?.classList.add('d-none');
+            }finally{
+              hideLoader();
+            }
+            return;
+          }
         }
-      }
-      setStatus('donnees.xlsx introuvable dans ce dossier.');
-    }catch(e){ setStatus('Erreur: '+e.message); }
-  });
+        setStatus('donnees.xlsx introuvable dans ce dossier.');
+      }catch(e){ setStatus('Erreur: '+e.message); }
+    });
+  }
 
   // file input
-  document.getElementById('fileInput').addEventListener('change', async e=>{
-    const f = e.target.files?.[0]; if(!f) return;
-    await idbDel(KEY_FILE); fileHandle=null; showLoader(); await loadFromFile(f); hideLoader(); document.getElementById('accessCard').classList.add('d-none');
-  });
+  const fileInput = document.getElementById('fileInput');
+  if(fileInput){
+    fileInput.addEventListener('change', async e=>{
+      const f = e.target.files?.[0]; if(!f) return;
+      await idbDel(KEY_FILE); fileHandle=null;
+      showLoader();
+      try{
+        await loadFromFile(f);
+        document.getElementById('accessCard')?.classList.add('d-none');
+      }finally{
+        hideLoader();
+      }
+    });
+  }
 
   // drag & drop
-  ;['dragenter','dragover'].forEach(ev=>dropArea.addEventListener(ev,e=>{e.preventDefault(); dropArea.classList.add('border-primary');}));
-  ;['dragleave','drop'].forEach(ev=>dropArea.addEventListener(ev,e=>{e.preventDefault(); dropArea.classList.remove('border-primary');}));
-  dropArea.addEventListener('drop', async e=>{
-    const f = e.dataTransfer.files?.[0]; if(!f) return;
-    await idbDel(KEY_FILE); fileHandle=null; showLoader(); await loadFromFile(f); hideLoader(); document.getElementById('accessCard').classList.add('d-none');
-  });
+  if(dropArea){
+    ['dragenter','dragover'].forEach(ev=>dropArea.addEventListener(ev,e=>{e.preventDefault(); dropArea.classList.add('border-primary');}));
+    ['dragleave','drop'].forEach(ev=>dropArea.addEventListener(ev,e=>{e.preventDefault(); dropArea.classList.remove('border-primary');}));
+    dropArea.addEventListener('drop', async e=>{
+      const f = e.dataTransfer.files?.[0]; if(!f) return;
+      await idbDel(KEY_FILE); fileHandle=null;
+      showLoader();
+      try{
+        await loadFromFile(f);
+        document.getElementById('accessCard')?.classList.add('d-none');
+      }finally{
+        hideLoader();
+      }
+    });
+  }
 
   // OT / OI: bind pick buttons and drop areas (delegate parsing to App.importExcelFile)
   try{
@@ -260,13 +314,20 @@ function bindUI(){
   try{ const btnOt = document.getElementById('btnSave-ot'); if(btnOt) btnOt.disabled = false; const btnOi = document.getElementById('btnSave-oi'); if(btnOi) btnOi.disabled = false; }catch(e){}
 
   // filters
-  ['#fCategorie','#fOt','#fAction','#fAnnee'].forEach(id=>$(id).addEventListener('change', applyFilters));
-  document.getElementById('fSearch').addEventListener('input', applyFilters);
-  document.getElementById('btnReset').addEventListener('click', ()=>{ ['#fCategorie','#fOt','#fAction','#fAnnee'].forEach(id=>$(id).value=''); document.getElementById('fSearch').value=''; applyFilters(); });
+  ['#fCategorie','#fOt','#fAction','#fAnnee'].forEach(id=>{ const el=$(id); if(el) el.addEventListener('change', applyFilters); });
+  const searchInput = document.getElementById('fSearch'); if(searchInput) searchInput.addEventListener('input', applyFilters);
+  const resetBtn = document.getElementById('btnReset');
+  if(resetBtn){
+    resetBtn.addEventListener('click', ()=>{
+      ['#fCategorie','#fOt','#fAction','#fAnnee'].forEach(id=>{ const el=$(id); if(el) el.value=''; });
+      if(searchInput) searchInput.value='';
+      applyFilters();
+    });
+  }
 
   // actions
-  document.getElementById('btnSave').addEventListener('click', saveExcel);
-  document.getElementById('btnExport').addEventListener('click', exportExcel);
+  const btnSave = document.getElementById('btnSave'); if(btnSave) btnSave.addEventListener('click', saveExcel);
+  const btnExport = document.getElementById('btnExport'); if(btnExport) btnExport.addEventListener('click', exportExcel);
 
   // OT/OI save bindings (use saved file handle if available, otherwise fallback to export)
   try{
@@ -311,15 +372,30 @@ async function tryAutoRestore(){
     // PPA
     const savedFile = await idbGet(KEY_FILE);
     if(savedFile && await verifyPermission(savedFile,false)){
-      fileHandle = savedFile; const f = await savedFile.getFile(); showLoader(); await loadFromFile(f); hideLoader();
-      document.getElementById('accessCard').classList.add('d-none'); setStatus('Fichier PPA restauré automatiquement.');
+      fileHandle = savedFile; const f = await savedFile.getFile();
+      showLoader();
+      try{
+        await loadFromFile(f);
+        document.getElementById('accessCard').classList.add('d-none');
+        setStatus('Fichier PPA restauré automatiquement.');
+      }finally{
+        hideLoader();
+      }
     } else {
       const savedDir = await idbGet(KEY_DIR);
       if(savedDir && await verifyPermission(savedDir,false)){
         for await(const [name,h] of savedDir.entries()){
           if(h.kind==='file' && /^(donnees)\.xlsx$/i.test(name)){
-            fileHandle = h; const f = await h.getFile(); showLoader(); await loadFromFile(f); hideLoader();
-            document.getElementById('accessCard').classList.add('d-none'); setStatus('Dossier PPA restauré automatiquement.'); break;
+            fileHandle = h; const f = await h.getFile();
+            showLoader();
+            try{
+              await loadFromFile(f);
+              document.getElementById('accessCard').classList.add('d-none');
+              setStatus('Dossier PPA restauré automatiquement.');
+            }finally{
+              hideLoader();
+            }
+            break;
           }
         }
       }
@@ -752,8 +828,11 @@ function tryRenderOIBudgetFromSheet(sheet2D){
     const v = b - a;
     const f = (n)=> (Number(n)||0).toLocaleString(undefined,{maximumFractionDigits:0});
     const sign = v>=0? "+" : "−";
-    document.getElementById("kpi-oi-variance")?.innerText = sign + f(Math.abs(v));
-    document.getElementById("kpi-oi-sub")?.innerText = "Budget: "+f(b)+" | Réalisé: "+f(a);
-    document.getElementById("kpi-oi-count")?.innerText = data.length;
+    const varianceEl = document.getElementById("kpi-oi-variance");
+    if(varianceEl) varianceEl.innerText = sign + f(Math.abs(v));
+    const subEl = document.getElementById("kpi-oi-sub");
+    if(subEl) subEl.innerText = "Budget: "+f(b)+" | Réalisé: "+f(a);
+    const countEl = document.getElementById("kpi-oi-count");
+    if(countEl) countEl.innerText = data.length;
   }catch(e){ console.warn("OIBudget parse error:", e); }
 }
