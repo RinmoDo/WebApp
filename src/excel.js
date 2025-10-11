@@ -1,7 +1,9 @@
 // ====== Page 2 : Données locales persistantes (sans serveur) ======
 // Session guard handled in main app; no redirect here to keep embedded login flow.
 try{
-  const s = JSON.parse(localStorage.getItem('as_session')||'null');
+  const s = (typeof getSession === 'function')
+    ? getSession()
+    : JSON.parse(localStorage.getItem('as_session')||'null');
   if(!s){
     document.addEventListener('DOMContentLoaded', ()=>{
       try{ if(globalThis.App && App.Auth && typeof App.Auth.initLogin === 'function'){ App.Auth.initLogin(); } }catch(err){ console.warn(err); }
@@ -213,8 +215,14 @@ function bindUI(){
         for await(const [name, h] of dataDir.entries()){
           if(h.kind==='file' && /^(donnees)\.xlsx$/i.test(name)){
             fileHandle = h; await idbSet(KEY_FILE,h);
-            const f = await h.getFile(); showLoader(); await loadFromFile(f); hideLoader();
-            document.getElementById('accessCard')?.classList.add('d-none');
+            const f = await h.getFile();
+            showLoader();
+            try{
+              await loadFromFile(f);
+              document.getElementById('accessCard')?.classList.add('d-none');
+            }finally{
+              hideLoader();
+            }
             return;
           }
         }
@@ -228,7 +236,14 @@ function bindUI(){
   if(fileInput){
     fileInput.addEventListener('change', async e=>{
       const f = e.target.files?.[0]; if(!f) return;
-      await idbDel(KEY_FILE); fileHandle=null; showLoader(); await loadFromFile(f); hideLoader(); document.getElementById('accessCard')?.classList.add('d-none');
+      await idbDel(KEY_FILE); fileHandle=null;
+      showLoader();
+      try{
+        await loadFromFile(f);
+        document.getElementById('accessCard')?.classList.add('d-none');
+      }finally{
+        hideLoader();
+      }
     });
   }
 
@@ -238,7 +253,14 @@ function bindUI(){
     ['dragleave','drop'].forEach(ev=>dropArea.addEventListener(ev,e=>{e.preventDefault(); dropArea.classList.remove('border-primary');}));
     dropArea.addEventListener('drop', async e=>{
       const f = e.dataTransfer.files?.[0]; if(!f) return;
-      await idbDel(KEY_FILE); fileHandle=null; showLoader(); await loadFromFile(f); hideLoader(); document.getElementById('accessCard')?.classList.add('d-none');
+      await idbDel(KEY_FILE); fileHandle=null;
+      showLoader();
+      try{
+        await loadFromFile(f);
+        document.getElementById('accessCard')?.classList.add('d-none');
+      }finally{
+        hideLoader();
+      }
     });
   }
 
@@ -806,8 +828,11 @@ function tryRenderOIBudgetFromSheet(sheet2D){
     const v = b - a;
     const f = (n)=> (Number(n)||0).toLocaleString(undefined,{maximumFractionDigits:0});
     const sign = v>=0? "+" : "−";
-    document.getElementById("kpi-oi-variance")?.innerText = sign + f(Math.abs(v));
-    document.getElementById("kpi-oi-sub")?.innerText = "Budget: "+f(b)+" | Réalisé: "+f(a);
-    document.getElementById("kpi-oi-count")?.innerText = data.length;
+    const varianceEl = document.getElementById("kpi-oi-variance");
+    if(varianceEl) varianceEl.innerText = sign + f(Math.abs(v));
+    const subEl = document.getElementById("kpi-oi-sub");
+    if(subEl) subEl.innerText = "Budget: "+f(b)+" | Réalisé: "+f(a);
+    const countEl = document.getElementById("kpi-oi-count");
+    if(countEl) countEl.innerText = data.length;
   }catch(e){ console.warn("OIBudget parse error:", e); }
 }

@@ -1,26 +1,91 @@
 /* Achat & Suivi — Front only (localStorage persistence) */
-const USERS = [
-  {username:'admin',  password:'admin123', role:'admin',  display:'Administrateur'},
-  {username:'user',   password:'user123',  role:'user',   display:'Utilisateur'},
-  {username:'viewer', password:'view123',  role:'viewer', display:'Lecteur'}
+const USER_PROFILES = [
+  {username:'admin',  role:'admin',  display:'Administrateur'},
+  {username:'user',   role:'user',   display:'Utilisateur'},
+  {username:'viewer', role:'viewer', display:'Lecteur'}
 ];
 const STORAGE = {
   ot: 'as_ot', oi: 'as_oi', launch: 'as_launch', exec: 'as_exec', pj: 'as_pj'
 };
 const state = { currentItemKey: null, currentItemId: null };
 
+const SESSION_TTL_MS = 60 * 1000; // 1 minute session timeout
+let sessionTimeoutId = null;
+let sessionExpiredFlag = false;
+
+function readSessionRecord(){
+  try{ return JSON.parse(localStorage.getItem('as_session')||'null'); }
+  catch(e){ return null; }
+}
+
+function markSessionExpired(){ sessionExpiredFlag = true; }
+function consumeSessionExpiryNotice(){ const flag = sessionExpiredFlag; sessionExpiredFlag = false; return flag; }
+
+function cancelSessionTimeout(){
+  if(sessionTimeoutId){
+    clearTimeout(sessionTimeoutId);
+    sessionTimeoutId = null;
+  }
+}
+
+function handleSessionTimeout(){
+  markSessionExpired();
+  clearSession();
+  updateUserMenu(null);
+  resetAppView();
+  try{ loader.hide(true); }catch(e){}
+  try{
+    if(globalThis.App && App.Auth && typeof App.Auth.initLogin === 'function'){
+      App.Auth.initLogin();
+    }
+  }catch(e){ console.warn(e); }
+}
+
+function scheduleSessionTimeout(expiresAt){
+  cancelSessionTimeout();
+  const expiry = typeof expiresAt === 'number' ? expiresAt : readSessionRecord()?.expiresAt;
+  if(!expiry) return;
+  const delay = Math.max(0, expiry - Date.now());
+  sessionTimeoutId = setTimeout(handleSessionTimeout, delay);
+}
+
 // ===== UTIL =====
 const fmtMoney = n => Intl.NumberFormat('fr-FR', {style:'currency', currency:'MAD', maximumFractionDigits:0}).format(+n||0);
 const fmtDate = v => v ? new Date(v).toLocaleDateString() : '';
 const fmtPercent = v => `${(v*100).toFixed(1).replace('.0','')}%`;
 const uid = () => Math.random().toString(36).slice(2,10);
-function getRole(){ const s = JSON.parse(localStorage.getItem('as_session')||'null'); return s?s.role:null; }
+function getRole(){ const s = getSession(); return s?s.role:null; }
 function isAdmin(){ return getRole()==='admin'; }
 function read(key){ return JSON.parse(localStorage.getItem(STORAGE[key])||'[]'); }
 function write(key, arr){ localStorage.setItem(STORAGE[key], JSON.stringify(arr)); renderAll(); }
-function saveSession(user){ localStorage.setItem('as_session', JSON.stringify(user)); }
-function getSession(){ return JSON.parse(localStorage.getItem('as_session')||'null'); }
-function clearSession(){ localStorage.removeItem('as_session'); }
+function saveSession(user){
+  const record = { ...user, expiresAt: Date.now() + SESSION_TTL_MS };
+  localStorage.setItem('as_session', JSON.stringify(record));
+  sessionExpiredFlag = false;
+  scheduleSessionTimeout(record.expiresAt);
+  const { expiresAt, ...rest } = record;
+  return rest;
+}
+function getSession(){
+  const record = readSessionRecord();
+  if(!record) return null;
+  if(record.expiresAt && record.expiresAt <= Date.now()){
+    markSessionExpired();
+    clearSession();
+    return null;
+  }
+  if(!record.expiresAt){
+    record.expiresAt = Date.now() + SESSION_TTL_MS;
+    localStorage.setItem('as_session', JSON.stringify(record));
+  }
+  scheduleSessionTimeout(record.expiresAt);
+  const { expiresAt, ...rest } = record;
+  return rest;
+}
+function clearSession(){
+  cancelSessionTimeout();
+  localStorage.removeItem('as_session');
+}
 
 const ROLE_LABELS = { admin:'Administrateur', user:'Utilisateur', viewer:'Lecteur' };
 const LIMITED_ROLES = new Set(['user','viewer']);
@@ -52,11 +117,15 @@ const loader = {
     const msg = el?.querySelector('.loader-message');
     if(msg) msg.textContent = message || 'Chargement…';
   },
-  hide(){
+  hide(force=false){
     const el = this.el();
     if(!el) return;
-    this.counter = Math.max(0, this.counter-1);
-    if(this.counter>0) return;
+    if(force){
+      this.counter = 0;
+    }else{
+      this.counter = Math.max(0, this.counter-1);
+      if(this.counter>0) return;
+    }
     el.classList.remove('active');
     setTimeout(()=>{
       if(this.counter===0){
@@ -237,20 +306,25 @@ async function initApp(options={}){
       console.error('Erreur chargement initial', err);
       result = { errors: [err] };
     }finally{
-      applyRolePermissions(session);
-      updateUserMenu(session);
-      if(mainNav) mainNav.classList.remove('d-none');
-      if(appSection){
-        appSection.classList.remove('d-none');
-        requestAnimationFrame(()=> appSection.classList.add('app-visible'));
+      try{
+        try{ applyRolePermissions(session); }catch(err){ console.error('applyRolePermissions failed', err); }
+        try{ updateUserMenu(session); }catch(err){ console.error('updateUserMenu failed', err); }
+        try{
+          if(mainNav) mainNav.classList.remove('d-none');
+          if(appSection){
+            appSection.classList.remove('d-none');
+            requestAnimationFrame(()=> appSection.classList.add('app-visible'));
+          }
+          if(loginScreen){
+            loginScreen.classList.add('screen-hidden');
+            setTimeout(()=> loginScreen.classList.add('d-none'), 450);
+          }
+        }catch(err){ console.error('initApp UI transition failed', err); }
+        try{ renderAll(); }catch(err){ console.error('renderAll failed', err); }
+        try{ setAppReady(true); }catch(err){ console.error('setAppReady failed', err); }
+      }finally{
+        loader.hide(true);
       }
-      if(loginScreen){
-        loginScreen.classList.add('screen-hidden');
-        setTimeout(()=> loginScreen.classList.add('d-none'), 450);
-      }
-      renderAll();
-      setAppReady(true);
-      if(!skipLoader) loader.hide();
     }
     return result;
   };
@@ -814,29 +888,20 @@ App.Auth = (function(){
 
   // Predefined users (username + SHA-256 of password)
   const users = [
-    { username: "admin",  passHash: "e99a18c428cb38d5f260853678922e03abd8334a8a62c70ffb5d7a3a2a0b6f16" }, // "admin123"
-    { username: "viewer", passHash: "b0f1d1e6bb338f0e92bf3b1de9cf3a8c0b37b7f9e3d6d8a28b9a8a1b9a6a9d12" }  // "view123" (fake hash placeholder, see note below)
+    { username: "admin",  passHash: "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9" }, // "admin123"
+    { username: "user",   passHash: "e606e38b0d8c19b24cf0ee3808183162ea7cd63ff7912dbb22b5e803286b4446" }, // "user123"
+    { username: "viewer", passHash: "656d604dfdba41a262963cce53699bbc56cd7a2c0da1ad5ead45fc49214159d6" }  // "view123"
   ];
 
   let lockTimerId = null;
   let submitHandler = null;
 
-  // NOTE: Replace viewer hash with real hash of "view123". We'll compute below if crypto.subtle is available.
   async function sha256Hex(text){
     const enc = new TextEncoder().encode(text);
     const buf = await crypto.subtle.digest("SHA-256", enc);
     const arr = Array.from(new Uint8Array(buf));
     return arr.map(b => b.toString(16).padStart(2, "0")).join("");
   }
-
-  // Compute and fix the viewer hash at runtime to avoid hardcoding mistakes
-  (async ()=>{
-    try {
-      const h = await sha256Hex("view123");
-      const v = users.find(u=>u.username==="viewer");
-      if(v) v.passHash = h;
-    }catch(e){ /* ignore */ }
-  })();
 
   function now(){ return Math.floor(Date.now()/1000); }
 
@@ -852,22 +917,24 @@ App.Auth = (function(){
   }
 
   function buildUserObject(uname){
-    const meta = (typeof USERS !== 'undefined' && Array.isArray(USERS)) ? USERS.find(u=>u.username===uname) : null;
+    const meta = Array.isArray(USER_PROFILES) ? USER_PROFILES.find(u=>u.username===uname) : null;
     return { username: uname, display: meta?.display || uname, role: meta?.role || 'viewer' };
   }
 
   function persistSession(uname){
     const userObj = buildUserObject(uname);
     try{
-      if(globalThis.saveSession){
-        globalThis.saveSession(userObj);
-      }else{
-        localStorage.setItem('as_session', JSON.stringify(userObj));
+      if(typeof saveSession === 'function'){
+        return saveSession(userObj);
       }
-    }catch(e){
-      localStorage.setItem('as_session', JSON.stringify(userObj));
-    }
-    return userObj;
+    }catch(e){ console.warn('saveSession failed', e); }
+    const fallback = { ...userObj, expiresAt: Date.now() + SESSION_TTL_MS };
+    try{ localStorage.setItem('as_session', JSON.stringify(fallback)); }
+    catch(e){ localStorage.setItem('as_session', JSON.stringify(fallback)); }
+    sessionExpiredFlag = false;
+    scheduleSessionTimeout(fallback.expiresAt);
+    const { expiresAt, ...rest } = fallback;
+    return rest;
   }
 
   function showAlert(msg){
@@ -886,19 +953,6 @@ App.Auth = (function(){
   // App.Auth will use the application's global session helpers (saveSession/getSession/clearSession)
 
   async function validate(username, password){
-    // Explicit demo override: accept admin / admin123
-    if(username === 'admin' && password === 'admin123'){
-      return true;
-    }
-    // If a global USERS list with plaintext passwords exists, prefer direct comparison
-    try{
-      if(typeof USERS !== 'undefined' && Array.isArray(USERS)){
-        const pu = USERS.find(x=>x.username===username);
-        if(pu && typeof pu.password === 'string'){
-          return pu.password === password;
-        }
-      }
-    }catch(e){ /* ignore and fallback to hashed list */ }
     const u = users.find(x=>x.username===username);
     if(!u) return false;
     const h = await sha256Hex(password);
@@ -951,7 +1005,12 @@ App.Auth = (function(){
 
     resetAppView();
     updateUserMenu(null);
-    hideAlert();
+    const expired = consumeSessionExpiryNotice();
+    if(expired){
+      showAlert('Votre session a expiré. Veuillez vous reconnecter.');
+    }else{
+      hideAlert();
+    }
 
     const form = document.getElementById('loginForm');
     const user = document.getElementById('username');
