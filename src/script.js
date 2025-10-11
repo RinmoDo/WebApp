@@ -9,7 +9,7 @@ const STORAGE = {
 };
 const state = { currentItemKey: null, currentItemId: null };
 
-const SESSION_TTL_MS = 60 * 1000; // 1 minute session timeout
+const SESSION_TTL_MS = 5 * 60 * 1000; // 5 minutes session timeout
 let sessionTimeoutId = null;
 let sessionExpiredFlag = false;
 
