@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GMAO — Maintenance | ONEE-BE</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <link rel="stylesheet" href="src/style.css">
+  <style>
+    .pipeline-card{border-left:4px solid}
+    .pipeline-card.pc-new{border-color:#6c757d}
+    .pipeline-card.pc-plan{border-color:#0dcaf0}
+    .pipeline-card.pc-appro{border-color:#ffc107}
+    .pipeline-card.pc-exec{border-color:#fd7e14}
+    .pipeline-card.pc-done{border-color:#198754}
+    .status-flow{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap}
+    .tbl-action-col{white-space:nowrap}
+    .gmao-kpi .card-body{padding:.75rem 1rem}
+    .gmao-kpi .kpi-val{font-size:1.6rem;font-weight:700}
+    .gmao-kpi .kpi-lbl{font-size:.75rem;color:#6c757d}
+    .section-divider{border-top:2px solid #e9ecef;margin:1.5rem 0 1rem}
+    .workflow-banner{background:linear-gradient(135deg,#f8f9fa 0%,#e9f0fb 100%);border:1px solid #dee2e6;border-radius:.5rem;padding:.75rem 1rem;margin-bottom:1rem}
+    .tab-pane{animation:fadein .2s}
+    @keyframes fadein{from{opacity:0}to{opacity:1}}
+  </style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg bg-body-tertiary border-bottom shadow-sm">
+  <div class="container d-flex align-items-center justify-content-between">
+    <div class="d-flex align-items-center gap-3">
+      <a class="navbar-brand d-flex align-items-center gap-3" href="index.html">
+        <img src="img/logo.png" alt="logo" style="height:36px;width:auto">
+        <div class="d-flex flex-column">
+          <span class="fw-semibold">GMAO — Maintenance</span>
+          <small class="text-muted">ONEE-BE • Centrale Diesel DAKHLA</small>
+        </div>
+      </a>
+      <a href="index.html" class="btn btn-outline-secondary btn-sm ms-2">
+        <i class="bi bi-arrow-left me-1"></i>Achat &amp; Suivi
+      </a>
+    </div>
+    <div class="d-flex align-items-center gap-3">
+      <span class="small text-muted">Connecté&nbsp;: <strong id="gmaoUserName">–</strong></span>
+      <span id="gmaoRoleBadge" class="badge bg-secondary d-none"></span>
+      <button class="btn btn-sm btn-outline-secondary" id="gmaoLogout">Déconnexion</button>
+    </div>
+  </div>
+</nav>
+
+<main class="container my-4">
+  <section id="gmaoApp">
+
+    <div class="workflow-banner mb-3 d-none d-md-block">
+      <div class="row g-0 align-items-center text-center" style="font-size:.7rem">
+        <div class="col"><span style="font-size:1.3rem;display:block">⚙️</span>Machine</div>
+        <div class="col-auto px-1 text-muted">→</div>
+        <div class="col"><span style="font-size:1.3rem;display:block">📋</span>Émission DT</div>
+        <div class="col-auto px-1 text-muted">→</div>
+        <div class="col"><span style="font-size:1.3rem;display:block">📅</span>Ordonnancement</div>
+        <div class="col-auto px-1 text-muted">→</div>
+        <div class="col"><span style="font-size:1.3rem;display:block">📦</span>Approvisionnement</div>
+        <div class="col-auto px-1 text-muted">→</div>
+        <div class="col"><span style="font-size:1.3rem;display:block">🔧</span>Intervention</div>
+        <div class="col-auto px-1 text-muted">→</div>
+        <div class="col"><span style="font-size:1.3rem;display:block">📝</span>Rapport</div>
+      </div>
+    </div>
+
+    <ul class="nav nav-tabs" id="gmaoTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabGmaoDash" type="button">
+          <i class="bi bi-speedometer2 me-1"></i>Tableau de bord
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabDT" type="button">
+          <i class="bi bi-file-earmark-text me-1"></i>Demandes de Travaux
+          <span class="badge bg-danger ms-1 d-none" id="dtBadge"></span>
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabOrdonnancement" type="button">
+          <i class="bi bi-calendar-check me-1"></i>Ordonnancement
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabAppro" type="button">
+          <i class="bi bi-boxes me-1"></i>Approvisionnement
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabInterventions" type="button">
+          <i class="bi bi-wrench-adjustable me-1"></i>Interventions
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabRapports" type="button">
+          <i class="bi bi-journal-check me-1"></i>Rapports
+        </button>
+      </li>
+    </ul>
+
+    <div class="tab-content border-start border-end border-bottom p-3 bg-white shadow-sm">
+
+      <!-- DASHBOARD -->
+      <div id="tabGmaoDash" class="tab-pane fade show active">
+        <h5 class="mb-3">Tableau de bord — Maintenance</h5>
+        <div class="row g-3 gmao-kpi mb-3">
+          <div class="col-6 col-md-4 col-xl-2">
+            <div class="card shadow-sm pipeline-card pc-new h-100"><div class="card-body">
+              <div class="kpi-lbl">DTs Nouvelles</div>
+              <div class="kpi-val text-secondary" id="kpi-dt-new">–</div>
+            </div></div>
+          </div>
+          <div class="col-6 col-md-4 col-xl-2">
+            <div class="card shadow-sm pipeline-card pc-plan h-100"><div class="card-body">
+              <div class="kpi-lbl">DTs Planifiées</div>
+              <div class="kpi-val text-info" id="kpi-dt-plan">–</div>
+            </div></div>
+          </div>
+          <div class="col-6 col-md-4 col-xl-2">
+            <div class="card shadow-sm pipeline-card pc-appro h-100"><div class="card-body">
+              <div class="kpi-lbl">OTs en approvisionnement</div>
+              <div class="kpi-val text-warning" id="kpi-ot-appro">–</div>
+            </div></div>
+          </div>
+          <div class="col-6 col-md-4 col-xl-2">
+            <div class="card shadow-sm pipeline-card pc-exec h-100"><div class="card-body">
+              <div class="kpi-lbl">Interventions en cours</div>
+              <div class="kpi-val" style="color:#fd7e14" id="kpi-int-encours">–</div>
+            </div></div>
+          </div>
+          <div class="col-6 col-md-4 col-xl-2">
+            <div class="card shadow-sm pipeline-card pc-done h-100"><div class="card-body">
+              <div class="kpi-lbl">DTs Clôturées</div>
+              <div class="kpi-val text-success" id="kpi-dt-close">–</div>
+            </div></div>
+          </div>
+          <div class="col-6 col-md-4 col-xl-2">
+            <div class="card shadow-sm h-100"><div class="card-body">
+              <div class="kpi-lbl">DTs ce mois</div>
+              <div class="kpi-val text-primary" id="kpi-dt-month">–</div>
+            </div></div>
+          </div>
+        </div>
+        <div class="row g-3">
+          <div class="col-12 col-lg-6">
+            <div class="card shadow-sm h-100">
+              <div class="card-header fw-semibold"><i class="bi bi-file-earmark-text me-1"></i>DTs récentes</div>
+              <div class="card-body p-0">
+                <div class="table-responsive">
+                  <table class="table table-sm table-hover mb-0" id="dashDtTable">
+                    <thead class="table-light"><tr><th>N°</th><th>Machine</th><th>Priorité</th><th>Statut</th></tr></thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-12 col-lg-6">
+            <div class="card shadow-sm h-100">
+              <div class="card-header fw-semibold"><i class="bi bi-wrench-adjustable me-1"></i>Interventions récentes</div>
+              <div class="card-body p-0">
+                <div class="table-responsive">
+                  <table class="table table-sm table-hover mb-0" id="dashIntTable">
+                    <thead class="table-light"><tr><th>N°</th><th>Machine</th><th>Équipe</th><th>Statut</th></tr></thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DEMANDES DE TRAVAUX -->
+      <div id="tabDT" class="tab-pane fade">
+        <div class="d-flex align-items-center mb-3 gap-2 flex-wrap">
+          <h5 class="m-0 me-auto">Demandes de Travaux (DT)</h5>
+          <button class="btn btn-primary btn-sm" onclick="GMAO.ui.openDT()">
+            <i class="bi bi-plus-circle me-1"></i>Nouvelle DT
+          </button>
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-md-3">
+            <select id="dtFltMachine" class="form-select form-select-sm">
+              <option value="">— Toutes les machines —</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <select id="dtFltType" class="form-select form-select-sm">
+              <option value="">— Tous types —</option>
+              <option>Corrective</option><option>Préventive</option><option>Améliorative</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <select id="dtFltStatus" class="form-select form-select-sm">
+              <option value="">— Tous statuts —</option>
+              <option value="nouvelle">Nouvelle</option>
+              <option value="planifiée">Planifiée</option>
+              <option value="en_cours">En cours</option>
+              <option value="clôturée">Clôturée</option>
+              <option value="annulée">Annulée</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <input id="dtFltSearch" class="form-control form-control-sm" placeholder="Rechercher…">
+          </div>
+          <div class="col-md-2">
+            <button class="btn btn-outline-secondary btn-sm w-100" onclick="GMAO.filters.resetDT()">Réinitialiser</button>
+          </div>
+        </div>
+        <div class="table-responsive shadow-sm">
+          <table class="table table-striped table-hover align-middle" id="tblDT">
+            <thead class="table-light">
+              <tr><th>N° DT</th><th>Machine</th><th>Type</th><th>Priorité</th><th>Description</th><th>Émetteur</th><th>Date</th><th>Statut</th><th></th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ORDONNANCEMENT -->
+      <div id="tabOrdonnancement" class="tab-pane fade">
+        <h5 class="mb-3">Ordonnancement — BT &amp; Ordres de Travail</h5>
+        <div class="card mb-4 border-info">
+          <div class="card-header bg-info bg-opacity-10 fw-semibold text-info">
+            <i class="bi bi-exclamation-circle me-1"></i>DTs en attente de planification
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-sm table-hover mb-0" id="tblDTPending">
+                <thead class="table-light">
+                  <tr><th>N° DT</th><th>Machine</th><th>Type</th><th>Priorité</th><th>Description</th><th>Date</th><th></th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="section-divider"></div>
+        <h6 class="mb-2"><i class="bi bi-file-earmark-ruled me-1"></i>Bons de Travail (BT) — Bureau des Méthodes</h6>
+        <div class="table-responsive shadow-sm mb-4">
+          <table class="table table-striped table-hover align-middle table-sm" id="tblBT">
+            <thead class="table-light">
+              <tr><th>N° BT</th><th>N° DT</th><th>Machine</th><th>Date création</th><th>Date planifiée</th><th>Statut</th><th>Dossier prépa</th><th></th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="section-divider"></div>
+        <h6 class="mb-2"><i class="bi bi-list-task me-1"></i>Ordres de Travail (OT)</h6>
+        <div class="row g-2 mb-2">
+          <div class="col-md-3">
+            <select id="otFltStatus" class="form-select form-select-sm">
+              <option value="">— Tous statuts —</option>
+              <option value="créé">Créé</option>
+              <option value="approvisionnement">Approvisionnement</option>
+              <option value="lancé">Lancé</option>
+              <option value="terminé">Terminé</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <input id="otFltSearch" class="form-control form-control-sm" placeholder="Rechercher…">
+          </div>
+        </div>
+        <div class="table-responsive shadow-sm">
+          <table class="table table-striped table-hover align-middle table-sm" id="tblOT">
+            <thead class="table-light">
+              <tr><th>N° OT</th><th>N° DT</th><th>Machine</th><th>Équipe</th><th>Date planifiée</th><th>Durée est.</th><th>Statut</th><th></th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- APPROVISIONNEMENT -->
+      <div id="tabAppro" class="tab-pane fade">
+        <h5 class="mb-3">Approvisionnement &amp; Magasin</h5>
+        <h6 class="mb-2"><i class="bi bi-cart me-1"></i>Demandes d'Approvisionnement</h6>
+        <div class="table-responsive shadow-sm mb-4">
+          <table class="table table-striped table-hover align-middle table-sm" id="tblAppro">
+            <thead class="table-light">
+              <tr><th>N° Appro</th><th>N° OT</th><th>Machine</th><th>Pièces / Matériaux</th><th>Qté</th><th>Date demande</th><th>Statut</th><th></th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="section-divider"></div>
+        <h6 class="mb-2"><i class="bi bi-box-arrow-right me-1"></i>Bons de Sortie Matériel (BSM) — Magasin</h6>
+        <div class="table-responsive shadow-sm">
+          <table class="table table-striped table-hover align-middle table-sm" id="tblBSM">
+            <thead class="table-light">
+              <tr><th>N° BSM</th><th>N° Appro</th><th>N° OT</th><th>Pièces livrées</th><th>Qté livrée</th><th>Date sortie</th><th></th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- INTERVENTIONS -->
+      <div id="tabInterventions" class="tab-pane fade">
+        <div class="d-flex align-items-center mb-3 gap-2">
+          <h5 class="m-0 me-auto">Interventions</h5>
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-md-3">
+            <select id="intFltStatus" class="form-select form-select-sm">
+              <option value="">— Tous statuts —</option>
+              <option value="planifiée">Planifiée</option>
+              <option value="en_cours">En cours</option>
+              <option value="terminée">Terminée</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <select id="intFltEquipe" class="form-select form-select-sm">
+              <option value="">— Toutes équipes —</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <input id="intFltSearch" class="form-control form-control-sm" placeholder="Machine, OT…">
+          </div>
+        </div>
+        <div class="table-responsive shadow-sm">
+          <table class="table table-striped table-hover align-middle" id="tblInterventions">
+            <thead class="table-light">
+              <tr><th>N° Int.</th><th>N° OT</th><th>Machine</th><th>Équipe</th><th>Date planifiée</th><th>Date début</th><th>Durée (h)</th><th>Statut</th><th></th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- RAPPORTS -->
+      <div id="tabRapports" class="tab-pane fade">
+        <div class="d-flex align-items-center mb-3 gap-2">
+          <h5 class="m-0 me-auto">Rapports d'Intervention &amp; Comptes-rendus</h5>
+          <button class="btn btn-outline-secondary btn-sm" onclick="window.print()">
+            <i class="bi bi-printer me-1"></i>Imprimer
+          </button>
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-md-3">
+            <select id="rapFltMachine" class="form-select form-select-sm">
+              <option value="">— Toutes machines —</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <input type="month" id="rapFltMonth" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-3">
+            <input id="rapFltSearch" class="form-control form-control-sm" placeholder="Rechercher…">
+          </div>
+          <div class="col-md-3">
+            <button class="btn btn-outline-secondary btn-sm w-100" onclick="GMAO.filters.resetRap()">Réinitialiser</button>
+          </div>
+        </div>
+        <div class="table-responsive shadow-sm">
+          <table class="table table-striped table-hover align-middle" id="tblRapports">
+            <thead class="table-light">
+              <tr><th>N° Rapport</th><th>N° Int.</th><th>Machine</th><th>Date</th><th>Travaux réalisés</th><th>Observations</th><th>Validé</th><th></th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </section>
+</main>
+
+<!-- Modal formulaire -->
+<div class="modal fade" id="gmaoModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="gmaoModalTitle">–</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="gmaoModalBody"></div>
+      <div class="modal-footer" id="gmaoModalFooter">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal détail -->
+<div class="modal fade" id="gmaoDetailModal" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="gmaoDetailTitle">–</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="gmaoDetailBody"></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="gmaoLoader" class="app-loader d-none" aria-hidden="true">
+  <div class="app-loader__content text-center">
+    <div class="spinner-border text-primary" role="status" aria-hidden="true"></div>
+    <div class="loader-message mt-3">Chargement…</div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="src/gmao.js"></script>
+</body>
+</html>
